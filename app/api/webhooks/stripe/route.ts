@@ -40,9 +40,14 @@ export async function POST(req: NextRequest) {
         const family = await prisma.family.findUnique({ where: { stripeCustomerId: customerId } });
         if (family) {
           if (session.mode === "setup") {
-            // $0 onboarding: card was saved; create the monthly subscription now.
-            await handleSetupOnboarding(family.id, session);
+            // $0 onboarding: card was saved. Saving a card is confirmed by email
+            // even if the subscription can't be created yet (e.g. no active
+            // students) — the family must not be left hanging after checkout.
+            const setupError = await withEmptyOnError(() => handleSetupOnboarding(family.id, session));
             await sendOnboardingConfirmation(family);
+            if (setupError) {
+              console.error("[stripe webhook] onboarding setup incomplete:", setupError);
+            }
           } else if (typeof session.subscription === "string") {
             // Backwards-compatible path for any older subscription-mode sessions.
             await attachSubscriptionToFamily(family.id, session.subscription);
@@ -219,5 +224,19 @@ async function markSkippedCreditsApplied(familyId: string, invoice: Stripe.Invoi
       },
     });
     remainingCents -= appliedCents;
+  }
+}
+
+/**
+ * Run a webhook sub-step and return any error instead of throwing, so callers
+ * can continue with the rest of the event handling (e.g. still send the
+ * onboarding confirmation even if the subscription can't be created yet).
+ */
+async function withEmptyOnError(fn: () => Promise<unknown>): Promise<string | null> {
+  try {
+    await fn();
+    return null;
+  } catch (err) {
+    return String(err);
   }
 }
