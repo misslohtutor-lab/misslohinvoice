@@ -1,0 +1,286 @@
+// Miss Loh Tutoring School — scheduling & billing schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---- Auth (Auth.js / NextAuth) ----
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  role          UserRole  @default(PARENT)
+  familyId      String?
+  family        Family?   @relation(fields: [familyId], references: [id])
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime  @default(now())
+
+  @@map("User")
+}
+
+enum UserRole {
+  ADMIN
+  PARENT
+  STAFF
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("Account")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("Session")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("VerificationToken")
+}
+
+// ---- Billing / scheduling domain ----
+
+// A "family" is a billing account: one Stripe customer, one card, one subscription.
+model Family {
+  id                 String        @id @default(cuid())
+  name               String
+  email              String        @unique // billing + portal contact
+  phone              String?
+  notes              String?
+stripeCustomerId String? @unique
+  subscriptionId     String?       @unique
+  subscription       Subscription?
+  subscriptionStatus String?
+  cardLast4          String?
+  users              User[]
+  students           Student[]
+  ledgerLines        LedgerLine[]
+  adjustments        Adjustment[]
+  messages           Message[]
+  pendingCharges     PendingCharge[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@map("Family")
+}
+
+model Student {
+  id            String       @id @default(cuid())
+  name          String
+  familyId      String
+  hourlyRate    Float        // $ per hour
+  subject       String?
+  color         String?
+  stripePriceId String?
+  stripeOneTimePriceId String?
+  active        Boolean      @default(true)
+  family        Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  weeklySlots   WeeklySlot[]
+  lessons       Lesson[]
+  ledgerLines   LedgerLine[]
+  createdAt     DateTime     @default(now())
+
+  @@map("Student")
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+// Recurring fixed schedule for a student (per hour-based session).
+model WeeklySlot {
+  id        String    @id @default(cuid())
+  studentId String
+  dayOfWeek DayOfWeek
+  startTime String // "HH:MM" 24h
+  endTime   String // "HH:MM" 24h
+  active    Boolean   @default(true)
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+  createdAt DateTime  @default(now())
+
+  @@unique([studentId, dayOfWeek, startTime, endTime])
+  @@map("WeeklySlot")
+}
+
+enum LessonStatus {
+  SCHEDULED
+  COMPLETED
+  MISSED // student absent (e.g. illness) → auto-credit applied to next bill
+  SKIPPED // organizer removed the lesson from the calendar → no credit
+  CANCELLED
+}
+
+model Lesson {
+  id            String       @id @default(cuid())
+  studentId     String
+  slotId        String?
+  date          DateTime // when the lesson starts
+  endTime       DateTime // when the lesson ends
+  status        LessonStatus @default(SCHEDULED)
+  durationHours Float // actual billable hours
+  notes         String?
+  student       Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  slot          WeeklySlot?  @relation(fields: [slotId], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@map("Lesson")
+}
+
+// Stripe subscription reference per family.
+model Subscription {
+  id                   String    @id @default(cuid())
+  familyId             String    @unique
+  stripeSubscriptionId String    @unique
+  periodStart          DateTime?
+  periodEnd            DateTime?
+  status               String?
+  currency             String    @default("cad")
+  family               Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime  @default(now())
+
+  @@map("Subscription")
+}
+
+// On-demand mid-month bill: email notice sent to the family, card charged by a
+// cron ~24h after the email was sent. `lines` is a JSON snapshot
+// ([{studentId,hours,rate,amount}]) of what was quoted in the email, so the
+// charge matches the notice even if the schedule changes in the meantime.
+model PendingCharge {
+  id          String   @id @default(cuid())
+  familyId    String
+  periodStart DateTime // billing period being billed (current calendar month)
+  periodEnd   DateTime
+   amount      Float // total quoted in the email (CAD)
+  lines       String // JSON snapshot of the itemized lines
+  emailSentAt DateTime
+  chargeAt    DateTime // emailSentAt + 24h; charge may run any time after this
+  status      String   @default("PENDING") // PENDING | PROCESSING | CHARGED | FAILED | CANCELLED
+  processingStartedAt DateTime?
+  invoiceId   String?
+  error       String?
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, chargeAt])
+  @@map("PendingCharge")
+}
+
+// Amounts billed each period, itemized per student (per-kid line item on one invoice).
+model LedgerLine {
+  id              String   @id @default(cuid())
+  familyId        String
+  studentId       String?
+  periodStart     DateTime // billing period start
+  periodEnd       DateTime // billing period end
+  hours           Float
+  rate            Float
+  amount          Float // hours * rate (per-kid subtotal)
+  stripeInvoiceId String?
+  stripeSessionId String?
+  createdAt       DateTime @default(now())
+  family          Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  student         Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([familyId, periodStart])
+  @@unique([stripeInvoiceId, studentId])
+  @@map("LedgerLine")
+}
+
+// Manual credits/memos (e.g. cancelled mid-month) applied to the next invoice.
+model Adjustment {
+  id               String   @id @default(cuid())
+  familyId         String
+  amount           Float // negative = credit toward next charge
+  reason           String
+  appliedToInvoice String?  @unique
+  remainingAmount  Float?
+  stripeBalanceTransactionId String? @unique
+  family           Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+
+  @@map("Adjustment")
+}
+
+// Outgoing email records (receipts, reminders, charge notices).
+model Message {
+  id        String   @id @default(cuid())
+  familyId  String?
+  to        String
+   type      String // CHARGE_NOTICE | RECEIPT | LESSON_REMINDER | PAYMENT_FAILED | ONBOARDING_COMPLETE
+  subject   String
+  sent      Boolean  @default(true)
+  dedupeKey String?  @unique
+  createdAt DateTime @default(now())
+  family    Family?  @relation(fields: [familyId], references: [id], onDelete: SetNull)
+
+  @@index([familyId])
+  @@map("Message")
+}
+
+// Audit trail + dedupe for locally-scheduled background jobs (billing, charge
+// notice, lesson reminders). One row per (job, window); a SUCCESS row means the
+// job already ran for that window, so a late crontab invocation skips it. Used
+// to recover jobs missed while the machine was off.
+model ScheduledRun {
+  id         String   @id @default(cuid())
+  job        String // billing | charge-notice | reminders
+  windowKey  String // "YYYY-MM" for billing/charge-notice, "YYYY-MM-DD" for reminders
+  status     String // SUCCESS | FAILED
+  detail     String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@unique([job, windowKey])
+  @@map("ScheduledRun")
+}
+
+// Stripe webhook deliveries are retried, so processing state must survive a request.
+model StripeEvent {
+  id          String    @id
+  type        String
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("StripeEvent")
+}

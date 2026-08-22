@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/charge-notice?secret=${CRON_SECRET}",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/billing?secret=${CRON_SECRET}",
+      "schedule": "0 8 1 * *"
+    },
+    {
+      "path": "/api/cron/reminders?secret=${CRON_SECRET}",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/midmonth-billing?secret=${CRON_SECRET}",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

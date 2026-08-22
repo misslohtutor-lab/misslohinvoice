@@ -1,0 +1,261 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
+import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
+import type { MonthSummary } from "@/lib/scheduling";
+import { timeToMinutes } from "@/lib/ui";
+import { createOnboardingCheckout, syncNextMonthQuantities, queueMidMonthCharge } from "@/lib/billing";
+import { nextMonthFromNow } from "@/lib/billing";
+import { sendOnboarding } from "@/lib/email-templates";
+import { formatBusinessDate, formatBusinessTime } from "@/lib/time";
+import { getStripe } from "@/lib/stripe";
+
+export async function createFamily(formData: FormData) {
+  const name = String(formData.get("name") ?? "");
+  const email = String(formData.get("email") ?? "");
+  const phone = String(formData.get("phone") ?? "") || null;
+
+  const family = await prisma.family.create({ data: { name, email, phone } });
+  await prisma.user.upsert({
+    where: { email },
+    update: { role: UserRole.PARENT, familyId: family.id },
+    create: { email, name, role: UserRole.PARENT, familyId: family.id },
+  });
+  redirect(`/admin/families/${family.id}`);
+}
+
+export async function addStudent(formData: FormData) {
+  const familyId = String(formData.get("familyId") ?? "");
+  const name = String(formData.get("name") ?? "");
+  const hourlyRate = Number(formData.get("hourlyRate") ?? 0);
+  const subject = String(formData.get("subject") ?? "") || null;
+  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0 || Math.round(hourlyRate * 100) % 4 !== 0) {
+    throw new Error("Hourly rates must be positive and divisible by $0.04");
+  }
+
+  await prisma.student.create({
+    data: { familyId, name, hourlyRate, subject },
+  });
+  revalidatePath("/admin/families/" + familyId);
+}
+
+export async function addWeeklySlot(formData: FormData) {
+  const studentId = String(formData.get("studentId") ?? "");
+  const student = await prisma.student.findUnique({ where: { id: studentId } });
+  const dayOfWeek = String(formData.get("dayOfWeek") ?? "") as DayOfWeek;
+  const startTime = String(formData.get("startTime") ?? "");
+  const endTime = String(formData.get("endTime") ?? "");
+
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  if (start == null || end == null) {
+    throw new Error("Times must be on a quarter hour (e.g. 16:00, 16:15)");
+  }
+  if (end <= start) {
+    throw new Error("End time must be after start time");
+  }
+
+  if (!student) throw new Error("Student not found");
+
+  const overlapping = await prisma.weeklySlot.findFirst({
+    where: {
+      studentId,
+      dayOfWeek,
+      active: true,
+      startTime: { lt: endTime },
+      endTime: { gt: startTime },
+    },
+  });
+  if (overlapping) {
+    throw new Error("This slot overlaps an existing active slot for the student");
+  }
+
+  await prisma.weeklySlot.create({ data: { studentId, dayOfWeek, startTime, endTime } });
+  redirect(`/admin/families/${student?.familyId}`);
+}
+
+export async function generateLessonsAction(formData: FormData) {
+  const studentId = (formData.get("studentId") as string) || null;
+  const weeksAhead = Number(formData.get("weeksAhead") ?? 8);
+  try {
+    if (studentId) {
+      const student = await prisma.student.findUnique({ where: { id: studentId } });
+      const created = await generateLessonsForStudent(studentId, weeksAhead);
+      revalidatePath(`/admin/families/${student?.familyId}`);
+      return { ok: true, created, total: await countLessons(studentId) };
+    }
+    const created = await generateAllLessons(weeksAhead);
+    revalidatePath("/admin/schedule");
+    revalidatePath("/admin/families");
+    return { ok: true, created, total: await prisma.lesson.count({ where: { status: "SCHEDULED" } }) };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+async function countLessons(studentId: string) {
+  return prisma.lesson.count({ where: { studentId, status: "SCHEDULED" } });
+}
+
+export async function updateFamilyEmail(formData: FormData) {
+  const familyId = String(formData.get("familyId") ?? "");
+  const email = String(formData.get("email") ?? "").trim();
+  const family = await prisma.family.findUnique({ where: { id: familyId } });
+  if (!family) throw new Error("Family not found");
+
+  const oldEmail = family.email;
+  await prisma.family.update({ where: { id: familyId }, data: { email } });
+  // Keep the family's login account (User) in sync so magic-link sign-in
+  // works with the new address.
+  if (oldEmail !== email) {
+    await prisma.user.updateMany({
+      where: { familyId, email: oldEmail },
+      data: { email },
+    });
+  }
+  revalidatePath(`/admin/families/${familyId}`);
+}
+
+export async function sendOnboardingLink(formData: FormData) {
+  const familyId = String(formData.get("familyId") ?? "");
+  try {
+    const family = await prisma.family.findUnique({ where: { id: familyId } });
+    if (!family) throw new Error("Family not found");
+    const url = await createOnboardingCheckout(familyId);
+    const email = await sendOnboarding(family, url);
+    return { ok: true, checkoutUrl: url, emailSent: email.sent, emailError: email.error };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+export type SyncResult =
+  | { ok: true; summary: MonthSummary; year: number; month: number }
+  | { ok: false; error: string };
+
+export async function syncNextMonthAction(formData: FormData): Promise<SyncResult> {
+  const familyId = String(formData.get("familyId") ?? "");
+  try {
+    const result = await syncNextMonthQuantities(familyId);
+    revalidatePath(`/admin/families/${familyId}`);
+    return { ok: true, summary: result.summary, year: result.year, month: result.month };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+export type BillingEmailResult =
+  | { ok: true; amount: number; chargeLabel: string }
+  | { ok: false; error: string };
+
+/**
+ * Mid-month billing: send the family an itemized billing email now and schedule
+ * the card to be charged 24h later (the cron performs the charge). For families
+ * that sign up mid-month so they aren't waiting for the 1st.
+ */
+export async function sendMidMonthBillingEmail(formData: FormData): Promise<BillingEmailResult> {
+  const familyId = String(formData.get("familyId") ?? "");
+  try {
+    const result = await queueMidMonthCharge(familyId);
+    const chargeLabel = `${formatBusinessDate(result.chargeAt, { weekday: "long", month: "long", day: "numeric" })}, ${formatBusinessTime(result.chargeAt)}`;
+    revalidatePath(`/admin/families/${familyId}`);
+    return { ok: true, amount: result.amount, chargeLabel };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+export async function computeMonthAction(formData: FormData) {
+  const familyId = String(formData.get("familyId") ?? "");
+  const { year, month } = nextMonthFromNow();
+  return { summary: await computeFamilyMonth(familyId, year, month) };
+}
+
+export async function deleteStudent(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const student = await prisma.student.findUnique({ where: { id } });
+  await prisma.student.delete({ where: { id } });
+  redirect(`/admin/families/${student?.familyId}`);
+}
+
+export async function deleteFamily(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const family = await prisma.family.findUnique({
+    where: { id },
+    select: { id: true, subscriptionId: true },
+  });
+
+  // Deleting the family must stop recurring billing: cancel the Stripe
+  // subscription (if any) so the customer is never charged again. A
+  // subscription that is already canceled or gone on Stripe's side is fine; a
+  // genuine cancellation failure aborts the delete rather than orphaning charges.
+  if (family?.subscriptionId) {
+    let active = false;
+    try {
+      const status = (await getStripe().subscriptions.retrieve(family.subscriptionId)).status;
+      active = status !== "canceled" && status !== "incomplete_expired";
+    } catch {
+      active = false; // subscription no longer exists on Stripe — nothing to cancel
+    }
+    if (active) {
+      try {
+        await getStripe().subscriptions.cancel(family.subscriptionId);
+      } catch (err) {
+        throw new Error("Failed to cancel the Stripe subscription: " + String(err));
+      }
+    }
+  }
+
+  await prisma.family.delete({ where: { id } });
+  redirect("/admin/families");
+}
+
+/**
+ * Set a lesson's status. Marking it MISSED (student no-show) records a negative
+ * Adjustment on the family that offsets the next bill; setting it back removes
+ * the credit.
+ */
+export async function markLesson(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const status = String(formData.get("status") ?? "") as LessonStatus;
+  const lesson = await prisma.lesson.findUniqueOrThrow({
+    where: { id },
+    include: { student: true },
+  });
+
+  const amount = lesson.durationHours * lesson.student.hourlyRate;
+
+  const existingCredits = await prisma.adjustment.findMany({
+    where: { reason: { startsWith: `Missed lesson ${lesson.id}` } },
+    select: { id: true, appliedToInvoice: true, stripeBalanceTransactionId: true },
+  });
+  if (existingCredits.some((credit) => credit.appliedToInvoice || credit.stripeBalanceTransactionId)) {
+    throw new Error("This missed-lesson credit has already been sent to Stripe and cannot be reversed here");
+  }
+
+  // Remove any unapplied local credit first (idempotent).
+  await prisma.adjustment.deleteMany({
+    where: { id: { in: existingCredits.map((credit) => credit.id) } },
+  });
+
+  // Only a genuinely MISSED lesson (e.g. illness) grants a credit. SKIPPED
+  // (organizational) and other statuses do not.
+  if (status === "MISSED") {
+    await prisma.adjustment.create({
+      data: {
+        familyId: lesson.student.familyId,
+        amount: -amount,
+        remainingAmount: -amount,
+        reason: `Missed lesson ${lesson.id} (${lesson.date.toISOString().slice(0, 10)})`,
+      },
+    });
+  }
+
+  await prisma.lesson.update({ where: { id }, data: { status } });
+
+  revalidatePath(`/admin/families/${lesson.student.familyId}`);
+  revalidatePath("/admin/schedule");
+}

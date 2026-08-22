@@ -1,0 +1,13 @@
+# Miss Loh Tutoring School — local scheduled jobs
+#
+# Install with:  crontab -e   (add the line below)
+#
+# The server itself is kept running by a systemd service (miss-loh.service),
+# not cron. The runner here is idempotent: each job records a SUCCESS row per
+# window in the ScheduledRun table, so a job is only executed once per billing
+# month / day. If the machine was off when a job was due, the first invocation
+# after boot runs it automatically (recovery).
+
+MAILTO=""
+TZ=America/Toronto
+*/30 * * * * /home/felix/projects/tutorschedule/scripts/run-jobs.sh >> /home/felix/projects/tutorschedule/logs/jobs.log 2>&1
