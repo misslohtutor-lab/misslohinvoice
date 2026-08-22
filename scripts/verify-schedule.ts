@@ -1,11 +1,13 @@
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { DayOfWeek } from "../app/generated/prisma/enums";
 import { generateLessonsForStudent } from "../lib/scheduling";
 import { computeFamilyMonth } from "../lib/scheduling";
 import { nextMonthFromNow } from "../lib/billing";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const family = await prisma.family.findUnique({

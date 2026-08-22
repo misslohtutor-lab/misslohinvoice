@@ -1,9 +1,11 @@
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { DayOfWeek, UserRole } from "../app/generated/prisma/enums";
 import { generateLessonsForStudent } from "../lib/scheduling";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const email = process.env.ADMIN_EMAIL || "admin@missloh.local";
