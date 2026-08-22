@@ -27,6 +27,19 @@ function isPrivateCheckoutHost(hostname: string): boolean {
     (octets[0] === 192 && octets[1] === 168);
 }
 
+/** Public URL for the family-guide page, or null when no public site is configured. */
+export function guideUrl(): string | null {
+  const baseUrl = process.env.BASE_URL?.trim();
+  if (!baseUrl) return null;
+  try {
+    const url = new URL(baseUrl);
+    if (isPrivateCheckoutHost(url.hostname)) return null;
+    return `${url.toString().replace(/\/+$/, "")}/family-guide`;
+  } catch {
+    return null;
+  }
+}
+
 export function checkoutReturnUrl(kind: "success" | "cancelled"): string {
   const configured = process.env[`CHECKOUT_${kind === "success" ? "SUCCESS" : "CANCEL"}_URL`]?.trim();
   const baseUrl = process.env.BASE_URL?.trim();

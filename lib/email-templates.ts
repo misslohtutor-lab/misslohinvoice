@@ -194,7 +194,10 @@ export async function sendLessonReminder(family: Family, lessonId: string, stude
 }
 
 /** Onboarding: invite a family to set up their card via Stripe Checkout. */
-export async function sendOnboarding(family: Family, checkoutUrl: string) {
+export async function sendOnboarding(family: Family, checkoutUrl: string, guideUrl?: string | null) {
+  const guide = guideUrl
+    ? `<p>New to Miss Loh Tutoring School? Read our <a href="${esc(guideUrl)}">family guide</a> to learn how billing and scheduling work.</p>`
+    : "";
   const html = layout("Set up your payment", `
     <p>Hi ${esc(family.name)},</p>
     <p>To start your tutoring billing, please set up your payment method. This takes a minute and stores your card securely with
@@ -202,6 +205,7 @@ export async function sendOnboarding(family: Family, checkoutUrl: string) {
     <p>There is <strong>no charge today</strong> — this only saves your card for future billing. Your card is charged on the 1st of
     each month for the actual lessons scheduled that month, and if you sign up mid-month you'll get an email notice before your
     first charge.</p>
+    ${guide}
     <p>After setup, you can close the Stripe page. We&apos;ll email you a confirmation when your payment method has been saved.</p>
     <p><a href="${checkoutUrl}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Set up payment</a></p>
     <p style="color:#888;font-size:13px">If the button doesn't work, paste this link into your browser:<br>${checkoutUrl}</p>

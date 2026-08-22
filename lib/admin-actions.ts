@@ -8,7 +8,7 @@ import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
 import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
 import type { MonthSummary } from "@/lib/scheduling";
 import { timeToMinutes } from "@/lib/ui";
-import { createOnboardingCheckout, syncNextMonthQuantities, queueMidMonthCharge } from "@/lib/billing";
+import { createOnboardingCheckout, guideUrl, syncNextMonthQuantities, queueMidMonthCharge } from "@/lib/billing";
 import { nextMonthFromNow } from "@/lib/billing";
 import { sendOnboarding } from "@/lib/email-templates";
 import { formatBusinessDate, formatBusinessTime } from "@/lib/time";
@@ -145,7 +145,7 @@ export async function sendOnboardingLink(formData: FormData): Promise<OnboardRes
     const family = await prisma.family.findUnique({ where: { id: familyId } });
     if (!family) throw new Error("Family not found");
     const url = await createOnboardingCheckout(familyId);
-    const email = await sendOnboarding(family, url);
+    const email = await sendOnboarding(family, url, guideUrl());
     return { ok: true, checkoutUrl: url, emailSent: email.sent, emailError: email.error };
   } catch (err) {
     return logActionError("sendOnboarding", err);
