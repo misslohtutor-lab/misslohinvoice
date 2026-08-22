@@ -36,6 +36,12 @@ const emailProvider: EmailConfig = {
   },
 };
 
+function isAllowedEmail(email: string): boolean {
+  const allowed = process.env.ALLOWED_EMAILS;
+  if (!allowed) return true; // no allowlist = open
+  return allowed.split(",").map((e) => e.trim().toLowerCase()).includes(email.toLowerCase());
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
@@ -45,6 +51,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     emailProvider,
   ],
   callbacks: {
+    signIn({ user, email }) {
+      const addr = email ?? user?.email;
+      if (!addr || !isAllowedEmail(addr)) return false;
+      return true;
+    },
     session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
