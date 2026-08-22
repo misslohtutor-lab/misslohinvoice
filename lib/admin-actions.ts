@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireAdmin } from "@/lib/admin";
 import { prisma } from "@/lib/prisma";
 import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
 import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
@@ -13,7 +14,13 @@ import { sendOnboarding } from "@/lib/email-templates";
 import { formatBusinessDate, formatBusinessTime } from "@/lib/time";
 import { getStripe } from "@/lib/stripe";
 
+function logActionError(action: string, err: unknown) {
+  console.error(`[admin-action:${action}]`, err);
+  return { ok: false as const, error: "Something went wrong. Please try again or check the server logs." };
+}
+
 export async function createFamily(formData: FormData) {
+  await requireAdmin();
   const name = String(formData.get("name") ?? "");
   const email = String(formData.get("email") ?? "");
   const phone = String(formData.get("phone") ?? "") || null;
@@ -28,6 +35,7 @@ export async function createFamily(formData: FormData) {
 }
 
 export async function addStudent(formData: FormData) {
+  await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
   const name = String(formData.get("name") ?? "");
   const hourlyRate = Number(formData.get("hourlyRate") ?? 0);
@@ -43,6 +51,7 @@ export async function addStudent(formData: FormData) {
 }
 
 export async function addWeeklySlot(formData: FormData) {
+  await requireAdmin();
   const studentId = String(formData.get("studentId") ?? "");
   const student = await prisma.student.findUnique({ where: { id: studentId } });
   const dayOfWeek = String(formData.get("dayOfWeek") ?? "") as DayOfWeek;
@@ -77,7 +86,12 @@ export async function addWeeklySlot(formData: FormData) {
   redirect(`/admin/families/${student?.familyId}`);
 }
 
-export async function generateLessonsAction(formData: FormData) {
+export type GenerateResult =
+  | { ok: true; created: number; total: number }
+  | { ok: false; error: string };
+
+export async function generateLessonsAction(formData: FormData): Promise<GenerateResult> {
+  await requireAdmin();
   const studentId = (formData.get("studentId") as string) || null;
   const weeksAhead = Number(formData.get("weeksAhead") ?? 8);
   try {
@@ -92,7 +106,7 @@ export async function generateLessonsAction(formData: FormData) {
     revalidatePath("/admin/families");
     return { ok: true, created, total: await prisma.lesson.count({ where: { status: "SCHEDULED" } }) };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    return logActionError("generateLessons", err);
   }
 }
 
@@ -101,6 +115,7 @@ async function countLessons(studentId: string) {
 }
 
 export async function updateFamilyEmail(formData: FormData) {
+  await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
   const email = String(formData.get("email") ?? "").trim();
   const family = await prisma.family.findUnique({ where: { id: familyId } });
@@ -119,7 +134,12 @@ export async function updateFamilyEmail(formData: FormData) {
   revalidatePath(`/admin/families/${familyId}`);
 }
 
-export async function sendOnboardingLink(formData: FormData) {
+export type OnboardResult =
+  | { ok: true; checkoutUrl: string; emailSent: boolean; emailError?: string }
+  | { ok: false; error: string };
+
+export async function sendOnboardingLink(formData: FormData): Promise<OnboardResult> {
+  await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
   try {
     const family = await prisma.family.findUnique({ where: { id: familyId } });
@@ -128,7 +148,7 @@ export async function sendOnboardingLink(formData: FormData) {
     const email = await sendOnboarding(family, url);
     return { ok: true, checkoutUrl: url, emailSent: email.sent, emailError: email.error };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    return logActionError("sendOnboarding", err);
   }
 }
 
@@ -137,13 +157,14 @@ export type SyncResult =
   | { ok: false; error: string };
 
 export async function syncNextMonthAction(formData: FormData): Promise<SyncResult> {
+  await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
   try {
     const result = await syncNextMonthQuantities(familyId);
     revalidatePath(`/admin/families/${familyId}`);
     return { ok: true, summary: result.summary, year: result.year, month: result.month };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    return logActionError("syncNextMonth", err);
   }
 }
 
@@ -157,6 +178,7 @@ export type BillingEmailResult =
  * that sign up mid-month so they aren't waiting for the 1st.
  */
 export async function sendMidMonthBillingEmail(formData: FormData): Promise<BillingEmailResult> {
+  await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
   try {
     const result = await queueMidMonthCharge(familyId);
@@ -164,24 +186,28 @@ export async function sendMidMonthBillingEmail(formData: FormData): Promise<Bill
     revalidatePath(`/admin/families/${familyId}`);
     return { ok: true, amount: result.amount, chargeLabel };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    return logActionError("sendMidMonthBillingEmail", err);
   }
 }
 
 export async function computeMonthAction(formData: FormData) {
+  await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
   const { year, month } = nextMonthFromNow();
   return { summary: await computeFamilyMonth(familyId, year, month) };
 }
 
 export async function deleteStudent(formData: FormData) {
+  await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const student = await prisma.student.findUnique({ where: { id } });
+  if (!student) throw new Error("Student not found");
   await prisma.student.delete({ where: { id } });
-  redirect(`/admin/families/${student?.familyId}`);
+  redirect(`/admin/families/${student.familyId}`);
 }
 
 export async function deleteFamily(formData: FormData) {
+  await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const family = await prisma.family.findUnique({
     where: { id },
@@ -204,7 +230,8 @@ export async function deleteFamily(formData: FormData) {
       try {
         await getStripe().subscriptions.cancel(family.subscriptionId);
       } catch (err) {
-        throw new Error("Failed to cancel the Stripe subscription: " + String(err));
+        console.error("[admin-action:deleteFamily] Stripe cancellation failed:", err);
+        throw new Error("Failed to cancel the Stripe subscription. Please try again.");
       }
     }
   }
@@ -219,6 +246,7 @@ export async function deleteFamily(formData: FormData) {
  * the credit.
  */
 export async function markLesson(formData: FormData) {
+  await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "") as LessonStatus;
   const lesson = await prisma.lesson.findUniqueOrThrow({

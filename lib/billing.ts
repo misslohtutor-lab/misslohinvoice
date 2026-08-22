@@ -431,7 +431,7 @@ export async function queueMidMonthCharge(familyId: string): Promise<{ pendingId
  */
 export async function chargeDuePendingCharges() {
   const now = new Date();
-  const staleBefore = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+  const staleBefore = new Date(now.getTime() - 6 * 60 * 60 * 1000);
   const due = await prisma.pendingCharge.findMany({
     where: {
       OR: [

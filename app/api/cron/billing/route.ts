@@ -28,10 +28,11 @@ export async function GET(req: NextRequest) {
   for (const family of families) {
     try {
       const { summary } = await syncNextMonthQuantities(family.id);
-      synced.push({ family: family.name, amount: summary.totalAmount });
+      synced.push({ family: family.id, amount: summary.totalAmount });
     } catch (err) {
-      failed.push({ family: family.name, error: String(err) });
+      console.error(`[cron:billing] failed for family ${family.id}:`, err);
+      failed.push({ family: family.id, error: "failed" });
     }
   }
-  return NextResponse.json({ ok: true, synced, failed });
+  return NextResponse.json({ ok: true, synced, failedCount: failed.length });
 }

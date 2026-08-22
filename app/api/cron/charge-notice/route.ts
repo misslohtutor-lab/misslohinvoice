@@ -52,8 +52,9 @@ export async function GET(req: NextRequest) {
       );
       if (res.sent) sent++;
     } catch (err) {
-      failed.push({ family: family.name, error: String(err) });
+      console.error(`[cron:charge-notice] failed for family ${family.id}:`, err);
+      failed.push({ family: family.id, error: "failed" });
     }
   }
-  return NextResponse.json({ ok: true, sent, failed, families: families.length });
+  return NextResponse.json({ ok: true, sent, failedCount: failed.length, families: families.length });
 }

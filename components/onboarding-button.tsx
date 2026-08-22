@@ -29,7 +29,7 @@ export function OnboardingButton({ familyId }: { familyId: string }) {
           Open checkout →
         </a>
       )}
-      {state?.error && <p className="mt-2 text-xs text-red-600">{state.error}</p>}
+      {state && !state.ok && state.error && <p className="mt-2 text-xs text-red-600">{state.error}</p>}
     </form>
   );
 }

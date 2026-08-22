@@ -112,6 +112,7 @@ model Student {
   ledgerLines   LedgerLine[]
   createdAt     DateTime     @default(now())
 
+  @@index([familyId])
   @@map("Student")
 }
 
@@ -162,6 +163,8 @@ model Lesson {
   slot          WeeklySlot?  @relation(fields: [slotId], references: [id], onDelete: SetNull)
 
   @@index([date])
+  @@index([studentId])
+  @@index([status])
   @@map("Lesson")
 }
 
@@ -239,6 +242,7 @@ model Adjustment {
   family           Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   createdAt        DateTime @default(now())
 
+  @@index([familyId])
   @@map("Adjustment")
 }
 

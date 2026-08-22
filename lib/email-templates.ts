@@ -88,8 +88,7 @@ export interface NoticeLesson {
   amount: number;
 }
 
-const ZOOM_LINK =
-  "https://www.google.com/url?q=https://us06web.zoom.us/j/3682791715?pwd%3DRlpISmt3cHVEbXl4d3RUWlVRY3JsZz09%26omn%3D81626463258&sa=D&source=calendar&usd=2&usg=AOvVaw0xgw52TcXffxyt4j6M8maO";
+const ZOOM_LINK = process.env.ZOOM_LINK ?? "";
 
 /** Itemized charge notice with a per-lesson overview. */
 export async function sendChargeNotice(
@@ -138,7 +137,7 @@ export async function sendChargeNotice(
         `If you need to change next month&apos;s schedule, contact us before the charge.<br>
         We require 24 hours&apos; notice for any schedule change or cancellation.<br>
         Lessons are held on Zoom:
-        <a href="${ZOOM_LINK}" style="color:#1a73e8">https://us06web.zoom.us/j/3682791715</a>`}
+        <a href="${esc(ZOOM_LINK)}" style="color:#1a73e8">${esc(ZOOM_LINK)}</a>`}
       </p>
     </div>
   `);
@@ -166,7 +165,7 @@ export async function sendMidMonthChargeNotice(
     If you need to change or cancel any of the lessons listed above, let us know before then.<br>
     We require 24 hours&apos; notice for schedule changes or cancellations.<br>
     Lessons are held on Zoom:
-    <a href="${ZOOM_LINK}" style="color:#1a73e8">https://us06web.zoom.us/j/3682791715</a>`;
+    <a href="${esc(ZOOM_LINK)}" style="color:#1a73e8">${esc(ZOOM_LINK)}</a>`;
   // A unique per-attempt suffix lets a failed or cancelled charge be retried:
   // each retry creates a fresh pending row and needs its own notice email.
   const key = opts.attempt ? `midmonth:${periodKey}:${opts.attempt}` : `midmonth:${periodKey}`;

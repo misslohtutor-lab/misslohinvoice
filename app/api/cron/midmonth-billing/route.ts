@@ -17,5 +17,10 @@ export async function GET(req: NextRequest) {
 
   const results = await chargeDuePendingCharges();
   const failed = results.filter((r) => !r.ok);
-  return NextResponse.json({ ok: failed.length === 0, results, failed: failed.length });
+  const charged = results.filter((r) => r.ok);
+  return NextResponse.json({
+    ok: failed.length === 0,
+    charged: charged.map((r) => ({ id: r.id, amount: r.amount ?? 0 })),
+    failed: failed.map((r) => ({ id: r.id })),
+  });
 }

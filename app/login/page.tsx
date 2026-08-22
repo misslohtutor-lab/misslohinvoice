@@ -1,10 +1,18 @@
 import { signIn } from "@/lib/auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { rateLimit } from "@/lib/rate-limit";
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string }> }) {
+  const { sent, error } = await searchParams;
+
   async function submit(formData: FormData) {
     "use server";
-    const email = String(formData.get("email") ?? "");
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    if (!rateLimit(`login:${ip}:${email}`)) {
+      redirect("/login?error=rate_limited");
+    }
     await signIn("email", { email, redirect: false });
     redirect("/login?sent=1");
   }
@@ -17,6 +25,16 @@ export default function LoginPage() {
       >
         <h1 className="mb-1 text-xl font-semibold">Miss Loh Tutoring School</h1>
         <p className="mb-5 text-sm text-zinc-500">Enter your email to receive a sign-in link.</p>
+        {sent && (
+          <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            Check your inbox for a sign-in link.
+          </p>
+        )}
+        {error === "rate_limited" && (
+          <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            Too many sign-in attempts for this email. Please wait about 10 minutes and try again.
+          </p>
+        )}
         <label className="mb-1 block text-sm font-medium" htmlFor="email">Email</label>
         <input
           id="email"
