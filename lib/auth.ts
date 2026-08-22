@@ -52,7 +52,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     signIn({ user, email }) {
-      const addr = email ?? user?.email;
+      const addr = typeof email === "string" ? email : user?.email;
       if (!addr || !isAllowedEmail(addr)) return false;
       return true;
     },
