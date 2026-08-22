@@ -262,10 +262,10 @@ model Message {
   @@map("Message")
 }
 
-// Audit trail + dedupe for locally-scheduled background jobs (billing, charge
-// notice, lesson reminders). One row per (job, window); a SUCCESS row means the
-// job already ran for that window, so a late crontab invocation skips it. Used
-// to recover jobs missed while the machine was off.
+// Audit trail + dedupe for background jobs (billing, charge notice, lesson
+// reminders). One row per (job, window); a SUCCESS row means the job already
+// ran for that window, so a late invocation skips it, recovering jobs missed
+// while the process was down.
 model ScheduledRun {
   id         String   @id @default(cuid())
   job        String // billing | charge-notice | reminders

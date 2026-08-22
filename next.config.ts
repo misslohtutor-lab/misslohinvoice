@@ -8,7 +8,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["192.168.0.98", "localhost", "127.0.0.1"],
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
   experimental: {
     serverActions: {
       allowedOrigins: ["tutorschedule.vercel.app"],

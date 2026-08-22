@@ -8,7 +8,7 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const email = process.env.ADMIN_EMAIL || "admin@missloh.local";
+  const email = process.env.ADMIN_EMAIL || "admin@example.com";
 
   const user = await prisma.user.upsert({
     where: { email },
@@ -17,7 +17,7 @@ async function main() {
   });
   console.log("Admin ready:", user.email, "(role:", user.role + ")");
 
-  const demoFamilyEmail = "family@missloh.local";
+  const demoFamilyEmail = "demo-family@example.com";
   const family = await prisma.family.upsert({
     where: { email: demoFamilyEmail },
     update: {},

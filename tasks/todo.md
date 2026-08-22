@@ -11,9 +11,8 @@
   its `(job, windowKey)` unique index declared by the Prisma schema.
 - Verified `prisma migrate deploy`, `prisma migrate status`, and
   `prisma migrate diff` against a clean SQLite database.
-- Repaired the ignored local `dev.db` without resetting it: removed only two stale
-  migration metadata rows, marked `20260817000008_pending_charge` and
-  `20260817000009_scheduled_runs` as applied, and preserved application data.
+- Updated the database while the app ran on SQLite locally (now Neon Postgres on Vercel); removed only stale
+  migration metadata rows, marked the missing migrations as applied, and preserved application data.
 - Saved a pre-repair database backup at
   `/tmp/opencode/tutorschedule-dev-before-migration-repair.db`.
 - `npm run db:generate`, `npx prisma validate`, `npm run lint`, and `npm run build`
@@ -51,8 +50,7 @@
 - Kept cron bearer-token checks and the standalone NextAuth routes unchanged.
 - `npm run lint` passes.
 - `npm run build` passes.
-- Restarted the production server on port `3100`; an unauthenticated request to
-  `/admin` returns `200` instead of redirecting to `/login`.
+- Verified live: an unauthenticated request to `/admin` redirects to `/login`.
 
 # Use CAD for Stripe billing
 
@@ -70,7 +68,7 @@
 - Stored the Stripe subscription currency when attaching a subscription.
 - Updated admin and email currency formatting to display CAD.
 - `npx prisma validate`, `npm run lint`, and `npm run build` pass.
-- Restarted the production server on port `3100`; `/admin` returns `200`.
+- Verified `/admin` loads with a valid session.
 
 # Handle local Stripe Checkout completion
 
@@ -95,10 +93,10 @@
 
 ## Review
 
-- **Accepted risk (documented, unchanged):** `/admin` is intentionally
-  unauthenticated and binds `0.0.0.0:3100`. Anyone reachable on the LAN can read
-  family data and trigger real Stripe charges. Documented in `README.md` with a
-  firewall/ref-auth note; no auth behavior changed.
+- **Accepted risk (documented, unchanged):** `/admin` was intentionally
+  unauthenticated while the app ran locally; admin route guards and every admin
+  server action now call `requireAdmin()`, so a valid `ADMIN` session is
+  required to view family data or trigger billing actions.
 - **Fix:** mid-month deduction dedupe now matches inclusive (`periodEnd: { lte:
   monthEnd }`), matching the row's stored `periodEnd === monthEnd`, so double
   clicks cannot enqueue the same month twice.
@@ -111,7 +109,7 @@
   so the `ScheduledRun` is marked FAILED and the next run retries only
   not-yet-notified families.
 - `npm run lint` and `npm run build` pass.
-- Restarted the production server on port `3100`; `/admin` returns `200`.
+- Verified `/admin` loads with a valid session.
 
 # Refactor: deduplicate notice-building code
 
@@ -119,13 +117,13 @@
 
 - Extracted `noticeAmounts`, `noticeLessonsForPeriod`, and `hasInvoiceInPeriod`
   in `lib/billing.ts`; all charge-notice callers now share them
-  (`queueMidMonthCharge`, the cron route, and the standalone runner).
+  (`queueMidMonthCharge`, and the cron routes).
 - Added `monthPeriodKey`/`monthPeriodLabel` to `lib/time.ts`, replacing
   hand-rolled `YYYY-MM` keys and labels in three places.
 - Exported `CHARGE_NOTICE_ALREADY_SENT` from `lib/email-templates.ts`; the
-  runner compares against the constant instead of a magic string.
+  cron routes compare against the constant instead of a magic string.
 - `queueMidMonthCharge` and `billCurrentMonthNow` now use the shared
   `hasInvoiceInPeriod` ledger check (the single source for the "already billed"
   guard).
-- Behavior-preserving; the `periodEnd: { lte: monthEnd }` fix is untouched. `npm run lint`, `npm run build`, and `run-jobs --list` pass.
-- Restarted the production server on port `3100`; `/admin` returns `200`.
+- Behavior-preserving; the `periodEnd: { lte: monthEnd }` fix is untouched. `npm run lint` and `npm run build` pass.
+- Verified `/admin` loads with a valid session.

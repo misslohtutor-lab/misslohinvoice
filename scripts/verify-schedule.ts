@@ -11,7 +11,7 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const family = await prisma.family.findUnique({
-    where: { email: "family@missloh.local" },
+    where: { email: "demo-family@example.com" },
     include: { students: true },
   });
   if (!family) throw new Error("demo family missing — run seed first");
