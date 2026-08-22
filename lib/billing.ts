@@ -30,7 +30,7 @@ function isPrivateCheckoutHost(hostname: string): boolean {
 export function checkoutReturnUrl(kind: "success" | "cancelled"): string {
   const configured = process.env[`CHECKOUT_${kind === "success" ? "SUCCESS" : "CANCEL"}_URL`]?.trim();
   const baseUrl = process.env.BASE_URL?.trim();
-  const candidate = configured || (baseUrl ? `${baseUrl}/` : null);
+  const candidate = configured || (baseUrl ? `${baseUrl}/family-guide` : null);
 
   if (!candidate) return EXTERNAL_CHECKOUT_RETURN_URL;
 
