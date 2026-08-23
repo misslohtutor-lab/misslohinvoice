@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { addStudent, addWeeklySlot, deleteStudent, deleteFamily, markLesson, updateFamilyEmail } from "@/lib/admin-actions";
+import { addStudent, addWeeklySlot, deleteStudent, deleteWeeklySlot, deleteFamily, markLesson, updateFamilyEmail } from "@/lib/admin-actions";
 import { computeFamilyMonth } from "@/lib/scheduling";
 import { businessMonthRange, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
 import { money, formatDate, formatTime, badge, QUARTER_HOUR_TIMES } from "@/lib/ui";
@@ -227,9 +227,15 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
               <h3 className="mb-1 text-xs font-medium uppercase text-zinc-400">Weekly schedule</h3>
               <ul className="mb-3 space-y-1 text-sm">
                 {s.weeklySlots.map((sl) => (
-                  <li key={sl.id} className="flex justify-between text-zinc-700">
-                    <span>{sl.dayOfWeek}</span>
-                    <span>{sl.startTime}–{sl.endTime}</span>
+                  <li key={sl.id} className="flex items-center justify-between gap-2 text-zinc-700">
+                    <span>{sl.dayOfWeek} · {sl.startTime}–{sl.endTime}</span>
+                    <form action={deleteWeeklySlot}>
+                      <input type="hidden" name="id" value={sl.id} />
+                      <ConfirmButton
+                        label="Delete"
+                        confirmText={`Delete the ${sl.dayOfWeek} ${sl.startTime}–${sl.endTime} slot? Its upcoming scheduled lessons will also be removed from the schedule and billing.`}
+                      />
+                    </form>
                   </li>
                 ))}
                 {s.weeklySlots.length === 0 && <li className="text-zinc-400">No weekly slots.</li>}

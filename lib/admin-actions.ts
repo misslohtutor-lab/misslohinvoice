@@ -87,6 +87,25 @@ export async function addWeeklySlot(formData: FormData) {
   redirect(`/admin/families/${student?.familyId}`);
 }
 
+/**
+ * Delete a recurring slot. Also removes the slot's upcoming SCHEDULED lessons
+ * so the student isn't billed for sessions that no longer happen (e.g. when
+ * moving the slot to a different time). Past lessons are kept for history.
+ */
+export async function deleteWeeklySlot(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const slot = await prisma.weeklySlot.findUnique({ where: { id }, include: { student: true } });
+  if (!slot) throw new Error("Slot not found");
+
+  await prisma.lesson.deleteMany({
+    where: { slotId: id, status: LessonStatus.SCHEDULED, date: { gte: new Date() } },
+  });
+  await prisma.weeklySlot.delete({ where: { id } });
+
+  revalidatePath(`/admin/families/${slot.student.familyId}`);
+}
+
 export type GenerateResult =
   | { ok: true; created: number; total: number }
   | { ok: false; error: string };
