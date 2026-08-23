@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail, layout, esc, type EmailType } from "@/lib/email";
 import { money } from "@/lib/ui";
 import { formatBusinessDate, formatBusinessTime } from "@/lib/time";
+import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import type { Family } from "@/generated/prisma/client";
 
 function cad(cents: number): string {
@@ -38,7 +39,7 @@ export async function sendReceipt(
     .map((l) => {
       const price = l.price;
       const qty = l.quantity ?? 0;
-      const hours = qty / 4; // billing unit = 15 min
+      const hours = qty / BILLING_UNITS_PER_HOUR; // billing unit = 15 min
       return `<tr><td>${esc(price?.nickname ?? "Lesson")}</td><td>${hours}h</td><td style="text-align:right">${cad(l.amount ?? 0)}</td></tr>`;
     })
     .join("");

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
-import { attachSubscriptionToFamily, createSubscriptionAfterSetup, receiptPeriod } from "@/lib/billing";
+import { attachSubscriptionToFamily, createSubscriptionAfterSetup } from "@/lib/subscriptions";
+import { receiptPeriod } from "@/lib/midmonth";
+import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import { sendReceipt, sendPaymentFailure, sendOnboardingConfirmation } from "@/lib/email-templates";
 
 export const runtime = "nodejs";
@@ -175,9 +177,9 @@ async function recordInvoiceLines(familyId: string, invoice: Stripe.Invoice) {
     const studentId = price?.metadata?.studentId;
     if (!studentId) continue;
     // Stripe prices are per 15-minute block; ledger rates are hourly.
-    const rate = price?.unit_amount != null ? (price.unit_amount * 4) / 100 : 0;
+    const rate = price?.unit_amount != null ? (price.unit_amount * BILLING_UNITS_PER_HOUR) / 100 : 0;
     const quantity = line.quantity ?? 0;
-    const hours = quantity / 4; // billing unit = 15 min
+    const hours = quantity / BILLING_UNITS_PER_HOUR; // billing unit = 15 min
     const amount = (line.amount ?? 0) / 100;
     await prisma.ledgerLine.upsert({
       where: {

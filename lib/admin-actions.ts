@@ -8,10 +8,11 @@ import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
 import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
 import type { MonthSummary } from "@/lib/scheduling";
 import { timeToMinutes } from "@/lib/ui";
-import { createOnboardingCheckout, guideUrl, syncNextMonthQuantities, queueMidMonthCharge } from "@/lib/billing";
-import { nextMonthFromNow } from "@/lib/billing";
+import { createOnboardingCheckout, syncNextMonthQuantities } from "@/lib/subscriptions";
+import { queueMidMonthCharge } from "@/lib/midmonth";
+import { guideUrl } from "@/lib/checkout";
 import { sendOnboarding } from "@/lib/email-templates";
-import { formatBusinessDate, formatBusinessTime } from "@/lib/time";
+import { formatBusinessDate, formatBusinessTime, nextBusinessMonth } from "@/lib/time";
 import { getStripe } from "@/lib/stripe";
 
 function logActionError(action: string, err: unknown) {
@@ -193,7 +194,7 @@ export async function sendMidMonthBillingEmail(formData: FormData): Promise<Bill
 export async function computeMonthAction(formData: FormData) {
   await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
-  const { year, month } = nextMonthFromNow();
+  const { year, month } = nextBusinessMonth();
   return { summary: await computeFamilyMonth(familyId, year, month) };
 }
 

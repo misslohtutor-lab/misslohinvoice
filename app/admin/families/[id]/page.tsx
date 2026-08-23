@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { addStudent, addWeeklySlot, deleteStudent, deleteFamily, markLesson, updateFamilyEmail } from "@/lib/admin-actions";
 import { computeFamilyMonth } from "@/lib/scheduling";
-import { nextMonthFromNow } from "@/lib/billing";
-import { businessMonthRange, currentBusinessMonthRange } from "@/lib/time";
+import { businessMonthRange, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
 import { money, formatDate, formatTime, badge, QUARTER_HOUR_TIMES } from "@/lib/ui";
 import { OnboardingButton } from "@/components/onboarding-button";
 import { BillingEmailButton } from "@/components/billing-email-button";
@@ -45,7 +44,7 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
   });
   if (!family) return <p>Family not found</p>;
 
-  const { year, month } = nextMonthFromNow();
+  const { year, month } = nextBusinessMonth();
   const { start: billingStart, end: billingEnd } = businessMonthRange(year, month);
   const billingMonthScheduled = await prisma.lesson.findMany({
     where: {

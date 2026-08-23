@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 
 let _stripe: Stripe | null = null;
 
@@ -24,8 +25,8 @@ export function dollarsToCents(dollars: number): number {
  */
 export function quarterHourUnitAmount(hourlyRate: number): number {
   const cents = dollarsToCents(hourlyRate);
-  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0 || cents % 4 !== 0) {
+  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0 || cents % BILLING_UNITS_PER_HOUR !== 0) {
     throw new Error("Hourly rates must be positive and divisible by $0.04");
   }
-  return cents / 4;
+  return cents / BILLING_UNITS_PER_HOUR;
 }

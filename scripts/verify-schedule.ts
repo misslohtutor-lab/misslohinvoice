@@ -4,7 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { DayOfWeek } from "../app/generated/prisma/enums";
 import { generateLessonsForStudent } from "../lib/scheduling";
 import { computeFamilyMonth } from "../lib/scheduling";
-import { nextMonthFromNow } from "../lib/billing";
+import { nextBusinessMonth } from "../lib/time";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
@@ -42,7 +42,7 @@ async function main() {
     console.log("generated", created, "lessons for", s.name);
   }
 
-  const { year, month } = nextMonthFromNow();
+  const { year, month } = nextBusinessMonth();
   const summary = await computeFamilyMonth(family.id, year, month);
   console.log("\n=== Next month billing preview ===");
   for (const l of summary.students) {

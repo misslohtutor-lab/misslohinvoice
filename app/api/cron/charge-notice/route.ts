@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/cron";
 import { prisma } from "@/lib/prisma";
-import { noticeAmounts, noticeLessonsForPeriod, nextMonthFromNow, syncNextMonthQuantities } from "@/lib/billing";
+import { noticeAmounts } from "@/lib/credits";
+import { noticeLessonsForPeriod } from "@/lib/midmonth";
+import { syncNextMonthQuantities } from "@/lib/subscriptions";
 import { sendChargeNotice } from "@/lib/email-templates";
-import { businessMonthRange, daysUntilNextBusinessMonth, monthPeriodKey, monthPeriodLabel } from "@/lib/time";
+import { businessMonthRange, daysUntilNextBusinessMonth, monthPeriodKey, monthPeriodLabel, nextBusinessMonth } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +29,7 @@ export async function GET(req: NextRequest) {
   const families = await prisma.family.findMany({
     where: { subscriptionId: { not: null }, subscriptionStatus: { not: "canceled" } },
   });
-  const { year, month } = nextMonthFromNow();
+  const { year, month } = nextBusinessMonth();
   const periodKey = monthPeriodKey(year, month);
   const periodLabel = monthPeriodLabel(year, month);
   const { start: billingStart, end: billingEnd } = businessMonthRange(year, month);

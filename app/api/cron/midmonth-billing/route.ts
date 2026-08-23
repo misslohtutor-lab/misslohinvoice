@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/cron";
-import { chargeDuePendingCharges } from "@/lib/billing";
+import { chargeDuePendingCharges } from "@/lib/midmonth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

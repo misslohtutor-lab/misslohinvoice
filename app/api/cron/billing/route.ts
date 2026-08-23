@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/cron";
 import { prisma } from "@/lib/prisma";
-import { syncNextMonthQuantities } from "@/lib/billing";
+import { syncNextMonthQuantities } from "@/lib/subscriptions";
 import { businessDateParts } from "@/lib/time";
 
 export const runtime = "nodejs";
