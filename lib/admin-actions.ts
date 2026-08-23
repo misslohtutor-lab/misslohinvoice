@@ -98,10 +98,12 @@ export async function deleteWeeklySlot(formData: FormData) {
   const slot = await prisma.weeklySlot.findUnique({ where: { id }, include: { student: true } });
   if (!slot) throw new Error("Slot not found");
 
-  await prisma.lesson.deleteMany({
-    where: { slotId: id, status: LessonStatus.SCHEDULED, date: { gte: new Date() } },
-  });
-  await prisma.weeklySlot.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.lesson.deleteMany({
+      where: { slotId: id, status: LessonStatus.SCHEDULED, date: { gte: new Date() } },
+    }),
+    prisma.weeklySlot.delete({ where: { id } }),
+  ]);
 
   revalidatePath(`/admin/families/${slot.student.familyId}`);
 }
