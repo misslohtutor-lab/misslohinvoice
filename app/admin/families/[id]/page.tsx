@@ -4,6 +4,7 @@ import { computeFamilyMonth } from "@/lib/scheduling";
 import { businessMonthRange, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
 import { money, formatDate, formatTime, badge, QUARTER_HOUR_TIMES } from "@/lib/ui";
 import { OnboardingButton } from "@/components/onboarding-button";
+import { CreateSubscriptionButton } from "@/components/create-subscription-button";
 import { BillingEmailButton } from "@/components/billing-email-button";
 import { GenerateLessonsButton } from "@/components/generate-lessons-button";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -77,9 +78,15 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
           <p className="mt-1 text-sm">
             Subscription: <span className="font-medium">{family.subscriptionStatus ?? "none"}</span>
             <span className="text-zinc-400"> · card {family.cardLast4 ? `···· ${family.cardLast4}` : "not saved"}</span>
+            {family.cardLast4 && !family.subscriptionId && (
+              <span className="ml-2 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
+                card saved — subscription pending
+              </span>
+            )}
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
+          {family.cardLast4 && !family.subscriptionId && <CreateSubscriptionButton familyId={family.id} />}
           <OnboardingButton familyId={family.id} />
           <form action={deleteFamily}>
             <input type="hidden" name="id" value={family.id} />

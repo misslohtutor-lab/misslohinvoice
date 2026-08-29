@@ -8,7 +8,7 @@ import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
 import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
 import type { MonthSummary } from "@/lib/scheduling";
 import { timeToMinutes } from "@/lib/ui";
-import { createOnboardingCheckout, syncNextMonthQuantities } from "@/lib/subscriptions";
+import { createOnboardingCheckout, createSubscriptionAfterSetup, syncNextMonthQuantities } from "@/lib/subscriptions";
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
 import { sendOnboarding } from "@/lib/email-templates";
@@ -171,6 +171,40 @@ export async function sendOnboardingLink(formData: FormData): Promise<OnboardRes
     return { ok: true, checkoutUrl: url, emailSent: email.sent, emailError: email.error };
   } catch (err) {
     return logActionError("sendOnboarding", err);
+  }
+}
+
+export type CreateSubscriptionResult =
+  | { ok: true; subscriptionId: string }
+  | { ok: false; error: string; deferred?: boolean };
+
+/**
+ * Manually create a family's monthly subscription after onboarding saved their
+ * card. Normally the webhook does this, but when onboarding completes before a
+ * schedule exists (nothing to bill), creation is deferred — this action lets an
+ * admin trigger it once lessons are scheduled.
+ */
+export async function createSubscription(formData: FormData): Promise<CreateSubscriptionResult> {
+  await requireAdmin();
+  const familyId = String(formData.get("familyId") ?? "");
+  try {
+    const family = await prisma.family.findUnique({ where: { id: familyId } });
+    if (!family) throw new Error("Family not found");
+    if (!family.stripeCustomerId || !family.cardLast4) {
+      return { ok: false, error: "This family hasn't saved a card yet — send the onboarding link first." };
+    }
+    const sub = await createSubscriptionAfterSetup(familyId, family.stripeCustomerId, null);
+    if (!sub) {
+      return {
+        ok: false,
+        deferred: true,
+        error: "No scheduled lessons for next month yet — nothing to bill. Add a weekly slot and generate lessons first.",
+      };
+    }
+    revalidatePath(`/admin/families/${familyId}`);
+    return { ok: true, subscriptionId: sub.id };
+  } catch (err) {
+    return logActionError("createSubscription", err);
   }
 }
 

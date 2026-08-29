@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/cron";
 import { prisma } from "@/lib/prisma";
 import { noticeAmounts } from "@/lib/credits";
+import { ensureSubscriptionsForCardSavedFamilies } from "@/lib/subscriptions";
 import { noticeLessonsForPeriod } from "@/lib/midmonth";
 import { syncNextMonthQuantities } from "@/lib/subscriptions";
 import { sendChargeNotice } from "@/lib/email-templates";
@@ -22,8 +23,17 @@ export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Self-heal: pick up card-saved families whose subscription was deferred
+  // because they had no scheduled lessons when they onboarded.
+  const sweep = await ensureSubscriptionsForCardSavedFamilies();
+  for (const id of sweep.created) console.log(`[charge-notice] created subscription for ${id}`);
+  for (const { familyId, error } of sweep.failed) {
+    console.error(`[charge-notice] failed to subscribe ${familyId}:`, error);
+  }
+
   if (!isNoticeDay()) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "not a notice day" });
+    return NextResponse.json({ ok: true, skipped: true, reason: "not a notice day", sweep });
   }
 
   const families = await prisma.family.findMany({
@@ -58,5 +68,5 @@ export async function GET(req: NextRequest) {
       failed.push({ family: family.id, error: "failed" });
     }
   }
-  return NextResponse.json({ ok: true, sent, failedCount: failed.length, families: families.length });
+  return NextResponse.json({ ok: true, sent, failedCount: failed.length, families: families.length, sweep });
 }

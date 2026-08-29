@@ -47,7 +47,15 @@ export default async function FamiliesPage() {
                 </Link>
               </td>
               <td className="px-4 py-2 text-zinc-600">{f.email}</td>
-              <td className="px-4 py-2 text-zinc-600">{f.subscriptionStatus ?? "No subscription"}</td>
+              <td className="px-4 py-2 text-zinc-600">
+                {f.subscriptionId ? (
+                  f.subscriptionStatus ?? "Active"
+                ) : f.cardLast4 ? (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">Pending — card saved</span>
+                ) : (
+                  "No subscription"
+                )}
+              </td>
             </tr>
           ))}
           {families.length === 0 && (

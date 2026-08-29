@@ -97,6 +97,12 @@ export async function createOnboardingCheckout(familyId: string): Promise<string
  *
  * Idempotent: if the family already has a subscription (e.g. a webhook
  * retry after the first attempt partially succeeded) this returns it untouched.
+ *
+ * Returns `null` — rather than throwing — when there is nothing to bill for
+ * the next billing month yet (no students, or no scheduled lessons). This is a
+ * valid state: a family can complete onboarding before a schedule exists. The
+ * caller defers and the nightly sweep (ensureSubscriptionsForCardSavedFamilies)
+ * retries once lessons are scheduled.
  */
 export async function createSubscriptionAfterSetup(
   familyId: string,
@@ -118,12 +124,15 @@ export async function createSubscriptionAfterSetup(
   const summary = await computeFamilyMonth(family.id, year, month);
   const items: Array<{ price: string; quantity: number }> = [];
   for (const line of summary.students) {
+    // Only add billable hours; a qty-0 item cannot be a subscription line item.
+    const hours = round2(line.hours * BILLING_UNITS_PER_HOUR);
+    if (hours <= 0) continue;
     const priceId = await ensurePriceForStudent(line.studentId, "recurring");
     // 1 billing unit = 15 minutes
-    items.push({ price: priceId, quantity: Math.max(round2(line.hours * BILLING_UNITS_PER_HOUR), 0) });
+    items.push({ price: priceId, quantity: hours });
   }
   if (items.length === 0) {
-    throw new Error("No active students — add a student before setting up billing");
+    return null;
   }
 
   const stripe = getStripe();
@@ -238,4 +247,44 @@ export async function syncNextMonthQuantities(familyId: string) {
   await applySkippedCreditsToStripe(family.id, family.stripeCustomerId);
 
   return { summary, year, month };
+}
+
+/**
+ * Nightly self-heal: give families that saved a card during onboarding but
+ * never got a subscription (because there was nothing to bill yet) a chance to
+ * become subscribed now that a schedule exists. Runs before the charge-notice
+ * and billing crons so those families are picked up on the next 1st.
+ *
+ * Returns a report so callers can log progress.
+ */
+export async function ensureSubscriptionsForCardSavedFamilies(): Promise<{
+  created: string[];
+  deferred: string[];
+  failed: Array<{ familyId: string; error: string }>;
+}> {
+  const candidates = await prisma.family.findMany({
+    where: {
+      subscriptionId: null,
+      cardLast4: { not: null },
+      subscriptionStatus: null,
+    },
+    select: { id: true, stripeCustomerId: true },
+  });
+
+  const created: string[] = [];
+  const deferred: string[] = [];
+  const failed: Array<{ familyId: string; error: string }> = [];
+
+  for (const family of candidates) {
+    if (!family.stripeCustomerId) continue;
+    try {
+      const sub = await createSubscriptionAfterSetup(family.id, family.stripeCustomerId);
+      if (sub) created.push(family.id);
+      else deferred.push(family.id);
+    } catch (err) {
+      failed.push({ familyId: family.id, error: String(err) });
+    }
+  }
+
+  return { created, deferred, failed };
 }
