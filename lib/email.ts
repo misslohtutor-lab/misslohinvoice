@@ -1,12 +1,26 @@
 import nodemailer from "nodemailer";
+import { prisma } from "@/lib/prisma";
 
-type EmailType = "CHARGE_NOTICE" | "RECEIPT" | "LESSON_REMINDER" | "PAYMENT_FAILED" | "ONBOARDING_COMPLETE";
+type EmailType =
+  | "CHARGE_NOTICE"
+  | "RECEIPT"
+  | "LESSON_REMINDER"
+  | "PAYMENT_FAILED"
+  | "ONBOARDING_COMPLETE"
+  | "ONBOARDING_INVITE"
+  | "MAGIC_LINK";
 
 export interface EmailRecipient {
   to: string;
   subject: string;
   html: string;
   text?: string;
+}
+
+export interface EmailRecord extends EmailRecipient {
+  type: EmailType;
+  familyId?: string | null;
+  dedupeKey?: string | null;
 }
 
 /** Escape user-supplied text for safe interpolation into an HTML email body. */
@@ -67,6 +81,34 @@ export function layout(title: string, body: string): string {
 ${body}
 </div>
 </div></body></html>`;
+}
+
+/**
+ * Send an email and record the attempt in the Message table. Unlike the
+ * deduped templates, every call sends and logs a fresh row — used for
+ * onboarding invites and magic links, which may legitimately be re-sent.
+ */
+export async function sendEmailAndRecord(record: EmailRecord): Promise<{ sent: boolean; error?: string }> {
+  let id: string | undefined;
+  try {
+    const created = await prisma.message.create({
+      data: {
+        familyId: record.familyId ?? null,
+        to: record.to,
+        type: record.type,
+        subject: record.subject,
+        sent: false,
+        dedupeKey: record.dedupeKey ?? null,
+      },
+    });
+    id = created.id;
+  } catch (err) {
+    // Logging a send must never block the email itself.
+    console.error("[email] could not record outgoing email:", err);
+  }
+  const res = await sendEmail(record);
+  if (id) await prisma.message.update({ where: { id }, data: { sent: res.sent } });
+  return res;
 }
 
 export type { EmailType };

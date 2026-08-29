@@ -251,7 +251,7 @@ model Message {
   id        String   @id @default(cuid())
   familyId  String?
   to        String
-   type      String // CHARGE_NOTICE | RECEIPT | LESSON_REMINDER | PAYMENT_FAILED | ONBOARDING_COMPLETE
+   type      String // CHARGE_NOTICE | RECEIPT | LESSON_REMINDER | PAYMENT_FAILED | ONBOARDING_COMPLETE | ONBOARDING_INVITE | MAGIC_LINK
   subject   String
   sent      Boolean  @default(true)
   dedupeKey String?  @unique

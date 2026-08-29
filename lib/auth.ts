@@ -2,7 +2,7 @@ import NextAuth, { type DefaultSession } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { EmailConfig } from "@auth/core/providers";
 import { prisma } from "@/lib/prisma";
-import { sendEmail, layout } from "@/lib/email";
+import { sendEmailAndRecord, layout } from "@/lib/email";
 
 declare module "next-auth" {
   interface Session {
@@ -24,7 +24,8 @@ const emailProvider: EmailConfig = {
   from: process.env.EMAIL_FROM || "noreply@example.com",
   maxAge: 24 * 60 * 60,
   async sendVerificationRequest({ identifier, url }) {
-    await sendEmail({
+    const family = await prisma.family.findUnique({ where: { email: identifier }, select: { id: true } }).catch(() => null);
+    await sendEmailAndRecord({
       to: identifier,
       subject: "Sign in to Miss Loh Tutoring School",
       html: layout("Your sign-in link", `
@@ -32,6 +33,8 @@ const emailProvider: EmailConfig = {
         <p><a href="${url}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Sign in</a></p>
         <p>If you didn't request this, you can ignore this message. The link expires shortly.</p>
       `),
+      type: "MAGIC_LINK",
+      familyId: family?.id ?? null,
     });
   },
 };

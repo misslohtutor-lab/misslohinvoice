@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
-import { sendEmail, layout, esc, type EmailType } from "@/lib/email";
+import { sendEmail, sendEmailAndRecord, layout, esc, type EmailType } from "@/lib/email";
 import { money } from "@/lib/ui";
 import { formatBusinessDate, formatBusinessTime } from "@/lib/time";
 import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
@@ -211,7 +211,13 @@ export async function sendOnboarding(family: Family, checkoutUrl: string, guideU
     <p><a href="${checkoutUrl}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Set up payment</a></p>
     <p style="color:#888;font-size:13px">If the button doesn't work, paste this link into your browser:<br>${checkoutUrl}</p>
   `);
-  return sendEmail({ to: family.email, subject: "Set up your payment", html });
+  return sendEmailAndRecord({
+    to: family.email,
+    subject: "Set up your payment",
+    html,
+    type: "ONBOARDING_INVITE",
+    familyId: family.id,
+  });
 }
 
 /** Confirm that Stripe saved the family's payment method after onboarding. */
