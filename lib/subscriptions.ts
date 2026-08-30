@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getStripe, quarterHourUnitAmount } from "@/lib/stripe";
 import { BILLING_CURRENCY, BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import { computeFamilyMonth, computeFamilyRange, round2 } from "@/lib/scheduling";
-import { businessDateTime, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
+import { businessDateTime, businessMonthRange, nextBusinessMonth } from "@/lib/time";
 import { checkoutReturnUrl } from "@/lib/checkout";
 import { applySkippedCreditsToStripe, noticeAmounts } from "@/lib/credits";
 import { hasInvoiceInPeriod } from "@/lib/midmonth";
@@ -324,11 +324,12 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     await prisma.family.update({ where: { id: family.id }, data: { stripeCustomerId: customer.id } });
   }
 
-  // Compute billable lessons for the current month.
-  const { start: monthStart, end: monthEnd } = currentBusinessMonthRange();
+  // Compute billable lessons for the next billing month.
+  const { year, month } = nextBusinessMonth();
+  const { start: monthStart, end: monthEnd } = businessMonthRange(year, month);
   const summary = await computeFamilyRange(familyId, monthStart, monthEnd);
   if (summary.totalAmount <= 0) {
-    throw new Error("No billable lessons in the current month");
+    throw new Error("No billable lessons for the next billing month");
   }
 
   // Idempotency guard: don't create a second invoice for the same month.
