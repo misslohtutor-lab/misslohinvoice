@@ -22,8 +22,8 @@ async function reserve(family: Family, type: EmailType, subject: string, dedupeK
 /** Returned when a notice email is blocked by the per-period dedupe, not a failure. */
 export const CHARGE_NOTICE_ALREADY_SENT = "Charge notice already sent";
 
-async function finish(messageId: string, sent: boolean) {
-  await prisma.message.update({ where: { id: messageId }, data: { sent } });
+async function finish(messageId: string, sent: boolean, html?: string) {
+  await prisma.message.update({ where: { id: messageId }, data: { sent, html: html ?? undefined } });
 }
 
 /** Send an itemized receipt after a successful monthly charge. */
@@ -62,7 +62,7 @@ export async function sendReceipt(
     <p style="color:#888;font-size:13px">Payments are automatic each month. For any schedule changes, contact the school.</p>
   `);
   const res = await sendEmail({ to: family.email, subject: `Your receipt — ${cad(invoice.amount_paid)}`, html });
-  await finish(message.id, res.sent);
+  await finish(message.id, res.sent, html);
   return res;
 }
 
@@ -77,7 +77,7 @@ export async function sendPaymentFailure(family: Family, invoice: Stripe.Invoice
     so your tutoring continues without interruption.</p>
   `);
   const res = await sendEmail({ to: family.email, subject: "Your payment was declined", html });
-  await finish(message.id, res.sent);
+  await finish(message.id, res.sent, html);
   return res;
 }
 
@@ -143,7 +143,7 @@ export async function sendChargeNotice(
     </div>
   `);
   const res = await sendEmail({ to: family.email, subject: `Your card will be charged ${money(total)} on ${charged}`, html });
-  await finish(message.id, res.sent);
+  await finish(message.id, res.sent, html);
   return res;
 }
 
@@ -190,7 +190,7 @@ export async function sendLessonReminder(family: Family, lessonId: string, stude
     <p><strong>${when}</strong> at <strong>${time}</strong></p>
   `);
   const res = await sendEmail({ to: family.email, subject: `Upcoming lesson: ${studentName} ${when}`, html });
-  await finish(message.id, res.sent);
+  await finish(message.id, res.sent, html);
   return res;
 }
 
@@ -232,6 +232,6 @@ export async function sendOnboardingConfirmation(family: Family) {
     <p>You can close the Stripe checkout page safely. If you need to change your schedule, please contact the school before the next billing notice.</p>
   `);
   const res = await sendEmail({ to: family.email, subject: "Your payment setup is complete", html });
-  await finish(message.id, res.sent);
+  await finish(message.id, res.sent, html);
   return res;
 }

@@ -97,6 +97,7 @@ export async function sendEmailAndRecord(record: EmailRecord): Promise<{ sent: b
         to: record.to,
         type: record.type,
         subject: record.subject,
+        html: record.html,
         sent: false,
         dedupeKey: record.dedupeKey ?? null,
       },
