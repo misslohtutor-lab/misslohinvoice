@@ -73,6 +73,10 @@ export async function POST(req: NextRequest) {
           await recordInvoiceLines(family.id, invoice);
           await markSkippedCreditsApplied(family.id, invoice);
           await sendReceipt(family, invoice, (await receiptPeriod(family.id, invoice)) ?? undefined);
+          await prisma.immediateInvoice.updateMany({
+            where: { stripeInvoiceId: invoice.id },
+            data: { status: "PAID" },
+          });
 
           // Auto-subscribe after immediate invoice payment: if the family has
           // no subscription yet and this was an immediate invoice (sent via
@@ -84,13 +88,24 @@ export async function POST(req: NextRequest) {
             typeof invoice.customer === "string"
           ) {
             try {
-              // Save the payment method used for this invoice as the default.
+              // Default payment method: prefer the one that paid this invoice,
+              // falling back to the customer's saved default if no payment
+              // intent is linked (e.g. settled outside a card link).
               const paymentIntent = invoice.payment_intent
                 ? await getStripe().paymentIntents.retrieve(String(invoice.payment_intent))
                 : null;
-              const paymentMethod = paymentIntent?.payment_method
+              let paymentMethod = paymentIntent?.payment_method
                 ? String(paymentIntent.payment_method)
                 : undefined;
+
+              if (!paymentMethod) {
+                const customer = await getStripe().customers.retrieve(invoice.customer);
+                if (!customer.deleted) {
+                  paymentMethod = customer.invoice_settings?.default_payment_method
+                    ? String(customer.invoice_settings.default_payment_method)
+                    : undefined;
+                }
+              }
 
               if (paymentMethod) {
                 await getStripe().customers.update(invoice.customer, {
@@ -102,7 +117,25 @@ export async function POST(req: NextRequest) {
                 }
               }
 
-              await createSubscriptionAfterSetup(family.id, invoice.customer, paymentMethod ?? null);
+              // If the immediate invoice prepaid the next month (no current-month
+              // lessons), the subscription must not bill that month again — start
+              // its trial the month after, so the first invoice lands safely there.
+              let targetMonth: { year: number; month: number } | undefined;
+              const prepaidRaw = invoice.metadata?.prepaidMonth;
+              if (typeof prepaidRaw === "string") {
+                const [y, m] = prepaidRaw.split("-").map(Number);
+                if (Number.isFinite(y) && Number.isFinite(m)) {
+                  const after = new Date(Date.UTC(y, m, 1)); // m is 1-based
+                  targetMonth = { year: after.getUTCFullYear(), month: after.getUTCMonth() };
+                }
+              }
+
+              await createSubscriptionAfterSetup(
+                family.id,
+                invoice.customer,
+                paymentMethod ?? null,
+                targetMonth ? { targetMonth } : undefined
+              );
             } catch (err) {
               console.error("[stripe webhook] auto-subscribe after immediate invoice failed:", err);
             }

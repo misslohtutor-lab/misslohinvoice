@@ -90,6 +90,7 @@ stripeCustomerId String? @unique
   adjustments        Adjustment[]
   messages           Message[]
   pendingCharges     PendingCharge[]
+  immediateInvoices  ImmediateInvoice[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -207,6 +208,24 @@ model PendingCharge {
 
   @@index([status, chargeAt])
   @@map("PendingCharge")
+}
+
+// An immediate invoice sent to a family (one-off via send_invoice, not the
+// PendingCharge flow). Tracked so a second "Send invoice now" can't double-bill
+// the same period — the row exists from send time, before Stripe reports payment.
+model ImmediateInvoice {
+  id              String   @id @default(cuid())
+  familyId        String
+  stripeInvoiceId String   @unique
+  periodStart     DateTime // billed period (first-inclusive)
+  periodEnd       DateTime // billed period (end-exclusive)
+  amount          Float
+  status          String   @default("OPEN") // OPEN | PAID
+  family          Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+
+  @@index([familyId, periodStart, periodEnd])
+  @@map("ImmediateInvoice")
 }
 
 // Amounts billed each period, itemized per student (per-kid line item on one invoice).

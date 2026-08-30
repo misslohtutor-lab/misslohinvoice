@@ -5,7 +5,6 @@ import { computeFamilyMonth, computeFamilyRange, round2 } from "@/lib/scheduling
 import { businessDateTime, businessMonthRange, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
 import { checkoutReturnUrl } from "@/lib/checkout";
 import { applySkippedCreditsToStripe, noticeAmounts } from "@/lib/credits";
-import { hasInvoiceInPeriod } from "@/lib/midmonth";
 
 export type PriceKind = "recurring" | "one-time";
 
@@ -108,7 +107,8 @@ export async function createOnboardingCheckout(familyId: string): Promise<string
 export async function createSubscriptionAfterSetup(
   familyId: string,
   customerId: string,
-  paymentMethod?: string | null
+  paymentMethod?: string | null,
+  opts?: { targetMonth?: { year: number; month: number } }
 ) {
   const family = await prisma.family.findUnique({
     where: { id: familyId },
@@ -121,7 +121,10 @@ export async function createSubscriptionAfterSetup(
     return await getStripe().subscriptions.retrieve(family.subscriptionId);
   }
 
-  const { year, month } = nextBusinessMonth();
+  // Bill `targetMonth` when provided (e.g. an immediate invoice already prepaid
+  // next month, so the subscription must not bill it again); otherwise default
+  // to the next business month.
+  const { year, month } = opts?.targetMonth ?? nextBusinessMonth();
   const summary = await computeFamilyMonth(family.id, year, month);
   const items: Array<{ price: string; quantity: number }> = [];
   for (const line of summary.students) {
@@ -329,6 +332,7 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
   let summary = await computeFamilyRange(familyId, curStart, curEnd);
   let monthStart = curStart;
   let monthEnd = curEnd;
+  let prepaidMonth: string | null = null;
 
   if (summary.totalAmount <= 0) {
     const { year, month } = nextBusinessMonth();
@@ -336,14 +340,17 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     summary = await computeFamilyRange(familyId, next.start, next.end);
     monthStart = next.start;
     monthEnd = next.end;
+    prepaidMonth = `${year}-${String(month + 1).padStart(2, "0")}`; // e.g. "2026-09"
   }
 
   if (summary.totalAmount <= 0) {
     throw new Error("No billable lessons in the current or next billing month");
   }
 
-  // Idempotency guard: don't create a second invoice for the same month.
-  const existingInvoice = await hasInvoiceInPeriod(familyId, monthStart, monthEnd);
+  // Idempotency guard: don't raise a second invoice for the same period. Uses
+  // the ImmediateInvoice marker, which is written at send time (before Stripe
+  // reports payment), so a repeat click can't double-bill.
+  const existingInvoice = await immediateInvoiceInPeriod(familyId, monthStart, monthEnd);
   if (existingInvoice) {
     throw new Error("This month has already been invoiced (invoice " + existingInvoice + ")");
   }
@@ -354,11 +361,17 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
   const { netAmount } = await noticeAmounts(familyId, summary.totalAmount);
 
   // Create a send-invoice invoice (customer pays via link, not auto-charged).
+  // `prepaidMonth` tells the webhook that the next month was billed up front,
+  // so the auto-subscription must not bill that month again.
   const invoice = await stripe.invoices.create({
     customer: customerId,
     collection_method: "send_invoice",
     days_until_due: 7,
-    metadata: { familyId: family.id, type: "immediate_invoice" },
+    metadata: {
+      familyId: family.id,
+      type: "immediate_invoice",
+      ...(prepaidMonth ? { prepaidMonth } : {}),
+    },
   });
 
   // Add a line item per student.
@@ -378,9 +391,39 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
   const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
   await stripe.invoices.sendInvoice(invoice.id);
 
+  // Record the sent invoice so the guard above catches repeats. Written last so
+  // a failed send doesn't block a retry.
+  await prisma.immediateInvoice.create({
+    data: {
+      familyId: family.id,
+      stripeInvoiceId: invoice.id,
+      periodStart: monthStart,
+      periodEnd: monthEnd,
+      amount: netAmount,
+    },
+  });
+
   return {
     invoiceId: invoice.id,
     invoiceUrl: finalized.hosted_invoice_url ?? `https://invoice.stripe.com/${invoice.id}`,
     amount: netAmount,
   };
+}
+
+/** Any immediate invoice already covering [start, end), by Stripe invoice id. */
+export async function immediateInvoiceInPeriod(
+  familyId: string,
+  start: Date,
+  end: Date
+): Promise<string | null> {
+  const existing = await prisma.immediateInvoice.findFirst({
+    where: {
+      familyId,
+      // Overlap: a full-month period ends exactly at `end`, so use strict
+      // overlap rather than periodEnd < end (which an equal periodEnd would miss).
+      periodStart: { lt: end },
+      periodEnd: { gt: start },
+    },
+  });
+  return existing?.stripeInvoiceId ?? null;
 }
