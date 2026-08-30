@@ -47,13 +47,24 @@ export async function noticeLessonsForPeriod(
  * Period to display on a receipt. One-off mid-month bills (no subscription)
  * have Stripe periods pinned to invoice creation, so they cover the span that
  * was actually billed: the first charged lesson → the last day of the month.
- * Returns null for subscription invoices, which should use Stripe's own period.
+ * For subscription invoices, uses the Stripe subscription's billing period
+ * which correctly reflects the covered timeframe (the invoice's own period
+ * can be wrong for trial/initial invoices where start == end).
  */
 export async function receiptPeriod(
   familyId: string,
   invoice: Stripe.Invoice
 ): Promise<{ from: Date; to: Date } | null> {
-  if (typeof invoice.subscription === "string") return null;
+  if (typeof invoice.subscription === "string") {
+    const sub = await getStripe().subscriptions.retrieve(invoice.subscription);
+    if (sub.current_period_start && sub.current_period_end) {
+      return {
+        from: new Date(sub.current_period_start * 1000),
+        to: new Date(sub.current_period_end * 1000 - 1),
+      };
+    }
+    return null;
+  }
 
   const pending = await prisma.pendingCharge.findFirst({
     where: { familyId, invoiceId: invoice.id },
