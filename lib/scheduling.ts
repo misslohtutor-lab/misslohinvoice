@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { DayOfWeek, LessonStatus } from "@/generated/prisma/enums";
-import { businessDateParts, businessMonthRange } from "@/lib/time";
+import { businessDateParts, businessMonthRange, businessDateTime } from "@/lib/time";
 
 const DAY_MAP: Record<DayOfWeek, number> = {
   MONDAY: 1,
@@ -27,14 +27,24 @@ export function slotDurationHours(start: string, end: string): number {
   return parseFloat(((e.h * 60 + e.m - (s.h * 60 + s.m)) / 60).toFixed(2));
 }
 
+/** Business-timezone calendar key (`YYYY-MM-DD`) for a lesson instant. */
+function businessDateKey(date: Date): string {
+  const { year, month, day } = businessDateParts(date);
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * The business-timezone date of the next `targetDow` on or after `from`.
+ * Scheduling happens in the business timezone so a slot's wall-clock times
+ * ("HH:MM") map to correct absolute instants regardless of the server's
+ * local timezone.
+ */
 function nextWeekdayFrom(from: Date, targetDow: number): Date {
-  const d = new Date(from);
-  d.setHours(0, 0, 0, 0);
-  const current = d.getDay();
-  let diff = targetDow - current;
+  const { year, month, day } = businessDateParts(from);
+  const todayDow = new Date(Date.UTC(year, month, day)).getUTCDay();
+  let diff = targetDow - todayDow;
   if (diff < 0) diff += 7;
-  d.setDate(d.getDate() + diff);
-  return d;
+  return businessDateTime(year, month, day + diff);
 }
 
 /**
@@ -63,14 +73,21 @@ export async function generateLessonsForStudent(studentId: string, weeksAhead: n
       },
       select: { date: true },
     });
-    const existingDates = new Set(existing.map((l) => l.date.toDateString()));
+    const existingDates = new Set(existing.map((l) => businessDateKey(l.date)));
 
-    for (let d = new Date(first); d.getTime() <= horizon.getTime(); d.setDate(d.getDate() + 7)) {
-      if (existingDates.has(d.toDateString())) continue;
-      const s = parseTimeHHMM(slot.startTime);
-      const start = new Date(d);
-      start.setHours(s.h, s.m, 0, 0);
-      const end = addMinutes(start, slotDurationHours(slot.startTime, slot.endTime) * 60);
+    const durationMin = Math.round(slotDurationHours(slot.startTime, slot.endTime) * 60);
+    const s = parseTimeHHMM(slot.startTime);
+    const { year: y0, month: m0, day: d0 } = businessDateParts(first);
+
+    for (let week = 0; ; week++) {
+      const dayOffset = week * 7;
+      // businessDateTime interprets the slot's wall-clock time in the business
+      // timezone and normalizes month/year overflow, giving the correct
+      // absolute instant even across month boundaries and DST transitions.
+      const start = businessDateTime(y0, m0, d0 + dayOffset, s.h, s.m);
+      if (start.getTime() > horizon.getTime()) break;
+      if (existingDates.has(businessDateKey(start))) continue;
+      const end = addMinutes(start, durationMin);
 
       if (end.getTime() <= new Date().getTime()) continue;
 

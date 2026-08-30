@@ -12,7 +12,7 @@ import { createOnboardingCheckout, createSubscriptionAfterSetup, syncNextMonthQu
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
 import { sendOnboarding } from "@/lib/email-templates";
-import { formatBusinessDate, formatBusinessTime, nextBusinessMonth } from "@/lib/time";
+import { formatBusinessDate, formatBusinessTime, nextBusinessMonth, BUSINESS_TIME_ZONE } from "@/lib/time";
 import { getStripe } from "@/lib/stripe";
 
 function logActionError(action: string, err: unknown) {
@@ -26,7 +26,9 @@ export async function createFamily(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const phone = String(formData.get("phone") ?? "") || null;
 
-  const family = await prisma.family.create({ data: { name, email, phone } });
+  const family = await prisma.family.create({
+    data: { name, email, phone, timeZone: BUSINESS_TIME_ZONE },
+  });
   await prisma.user.upsert({
     where: { email },
     update: { role: UserRole.PARENT, familyId: family.id },
@@ -153,6 +155,17 @@ export async function updateFamilyEmail(formData: FormData) {
       data: { email },
     });
   }
+  revalidatePath(`/admin/families/${familyId}`);
+}
+
+export async function updateFamilyTimezone(formData: FormData) {
+  await requireAdmin();
+  const familyId = String(formData.get("familyId") ?? "");
+  const timeZone = String(formData.get("timeZone") ?? "").trim();
+  if (!Intl.supportedValuesOf("timeZone").includes(timeZone)) {
+    throw new Error("Invalid timezone");
+  }
+  await prisma.family.update({ where: { id: familyId }, data: { timeZone } });
   revalidatePath(`/admin/families/${familyId}`);
 }
 

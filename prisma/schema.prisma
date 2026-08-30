@@ -79,7 +79,8 @@ model Family {
   email              String        @unique // billing + portal contact
   phone              String?
   notes              String?
-stripeCustomerId String? @unique
+  timeZone           String    @default("America/Toronto") // IANA name for email display; lesson times are stored as absolute instants
+  stripeCustomerId String? @unique
   subscriptionId     String?       @unique
   subscription       Subscription?
   subscriptionStatus String?

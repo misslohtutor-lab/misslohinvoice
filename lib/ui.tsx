@@ -1,4 +1,5 @@
 import { BILLING_CURRENCY } from "@/lib/currency";
+import { BUSINESS_TIME_ZONE } from "@/lib/time";
 
 export function money(n: number): string {
   return n.toLocaleString("en-CA", { style: "currency", currency: BILLING_CURRENCY });
@@ -29,12 +30,12 @@ export function timeToMinutes(t: string | null | undefined): number | null {
 
 export function formatDate(d: Date | string | undefined | null, opts?: Intl.DateTimeFormatOptions): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-US", opts ?? { month: "short", day: "numeric" });
+  return new Date(d).toLocaleDateString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "short", day: "numeric", ...opts });
 }
 
 export function formatTime(d: Date | string | undefined | null): string {
   if (!d) return "—";
-  return new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: BUSINESS_TIME_ZONE });
 }
 
 export function badge(status: string | undefined | null) {

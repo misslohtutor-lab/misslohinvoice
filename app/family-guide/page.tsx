@@ -192,7 +192,7 @@ export default function FamilyGuidePage() {
             />
             <FaqItem
               question="What timezone are lesson times in?"
-              answer="All lesson times are in Eastern Time (ET) — America/Toronto."
+              answer="Lesson times in our emails are shown in your family's local timezone (Eastern Time by default) with the timezone abbreviation included, so you always know when a lesson starts for you. Contact us if you'd like to change the timezone used for your emails."
             />
             <FaqItem
               question="How are billing units calculated?"

@@ -107,7 +107,7 @@ export async function sendChargeNotice(
   const lessonRows = lessons
     .map(
       (l) =>
-        `<tr><td>${esc(l.studentName)}</td><td>${formatBusinessDate(l.date, { weekday: "short", month: "short", day: "numeric" })}</td><td>${formatBusinessTime(l.date)}</td><td>${money(l.rate)}/hr</td><td>${l.durationHours}h</td><td style="text-align:right">${money(l.amount)}</td></tr>`
+        `<tr><td>${esc(l.studentName)}</td><td>${formatBusinessDate(l.date, { weekday: "short", month: "short", day: "numeric" }, family.timeZone)}</td><td>${formatBusinessTime(l.date, { timeZoneName: "short" }, family.timeZone)}</td><td>${money(l.rate)}/hr</td><td>${l.durationHours}h</td><td style="text-align:right">${money(l.amount)}</td></tr>`
     )
     .join("");
   const html = layout("Your card will be charged", `
@@ -161,7 +161,7 @@ export async function sendMidMonthChargeNotice(
   chargeAt: Date,
   opts: { grossTotal?: number; creditAmount?: number; attempt?: string } = {}
 ) {
-  const chargeOn = `${formatBusinessDate(chargeAt, { weekday: "long", month: "long", day: "numeric" })}, ${formatBusinessTime(chargeAt)}`;
+  const chargeOn = `${formatBusinessDate(chargeAt, { weekday: "long", month: "long", day: "numeric" }, family.timeZone)}, ${formatBusinessTime(chargeAt, { timeZoneName: "short" }, family.timeZone)}`;
   const note = `Your card will be charged 24 hours after this notice.<br>
     If you need to change or cancel any of the lessons listed above, let us know before then.<br>
     We require 24 hours&apos; notice for schedule changes or cancellations.<br>
@@ -182,8 +182,8 @@ export async function sendLessonReminder(family: Family, lessonId: string, stude
   const message = await reserve(family, "LESSON_REMINDER", "Lesson reminder", `lesson-reminder:${lessonId}`);
   if (!message) return { sent: false, error: "Lesson reminder already sent" };
 
-  const when = formatBusinessDate(start, { weekday: "long", month: "long", day: "numeric" });
-  const time = `${formatBusinessTime(start)} – ${formatBusinessTime(end)}`;
+  const when = formatBusinessDate(start, { weekday: "long", month: "long", day: "numeric" }, family.timeZone);
+  const time = `${formatBusinessTime(start, { timeZoneName: "short" }, family.timeZone)} – ${formatBusinessTime(end, { timeZoneName: "short" }, family.timeZone)}`;
   const html = layout("Upcoming lesson", `
     <p>This is a reminder of your upcoming lesson:</p>
     <p style="font-size:18px"><strong>${esc(studentName)}</strong></p>

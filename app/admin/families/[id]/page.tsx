@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { addStudent, addWeeklySlot, deleteStudent, deleteWeeklySlot, deleteFamily, markLesson, updateFamilyEmail } from "@/lib/admin-actions";
+import { addStudent, addWeeklySlot, deleteStudent, deleteWeeklySlot, deleteFamily, markLesson, updateFamilyEmail, updateFamilyTimezone } from "@/lib/admin-actions";
 import { computeFamilyMonth } from "@/lib/scheduling";
 import { businessMonthRange, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
 import { money, formatDate, formatTime, badge, QUARTER_HOUR_TIMES } from "@/lib/ui";
@@ -12,6 +12,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { DayOfWeek } from "@/generated/prisma/enums";
 
 const DAYS = Object.values(DayOfWeek);
+const TIMEZONES = Intl.supportedValuesOf("timeZone");
 
 export default async function FamilyDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -75,6 +76,16 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
               <button className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100">Update email</button>
             </form>
             · phone {family.phone ?? "—"}
+            <form action={updateFamilyTimezone} className="mt-1 inline-flex items-center gap-2">
+              <input type="hidden" name="familyId" value={family.id} />
+              <label htmlFor="timeZone" className="text-zinc-400">TZ</label>
+              <select name="timeZone" id="timeZone" defaultValue={family.timeZone} className="rounded border border-zinc-300 px-2 py-1 text-sm">
+                {TIMEZONES.map((z) => (
+                  <option key={z} value={z}>{z}</option>
+                ))}
+              </select>
+              <button className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100">Update timezone</button>
+            </form>
           </div>
           <p className="mt-1 text-sm">
             Subscription: <span className="font-medium">{family.subscriptionStatus ?? "none"}</span>

@@ -95,16 +95,18 @@ export function monthPeriodKey(year: number, month: number): string {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
 }
 
-/** Format a date in the business timezone (for emails and other readouts). */
-export function formatBusinessDate(date: Date, opts?: Intl.DateTimeFormatOptions): string {
-  return new Intl.DateTimeFormat("en-US", { ...opts, timeZone: BUSINESS_TIME_ZONE }).format(date);
+/** Format a date in a timezone (defaults to the business timezone). */
+export function formatBusinessDate(date: Date, opts?: Intl.DateTimeFormatOptions, timeZone = BUSINESS_TIME_ZONE): string {
+  return new Intl.DateTimeFormat("en-US", { ...opts, timeZone }).format(date);
 }
 
-/** Format a time in the business timezone (for emails and other readouts). */
-export function formatBusinessTime(date: Date, opts?: Intl.DateTimeFormatOptions): string {
+/** Format a time in a timezone (defaults to the business timezone). */
+export function formatBusinessTime(date: Date, opts?: Intl.DateTimeFormatOptions, timeZone = BUSINESS_TIME_ZONE): string {
   return new Intl.DateTimeFormat("en-US", {
-    ...(opts ?? { hour: "numeric", minute: "2-digit" }),
-    timeZone: BUSINESS_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    ...opts,
+    timeZone,
   }).format(date);
 }
 
