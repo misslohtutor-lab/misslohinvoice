@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { getStripe, quarterHourUnitAmount } from "@/lib/stripe";
 import { BILLING_CURRENCY, BILLING_UNITS_PER_HOUR } from "@/lib/currency";
-import { computeFamilyMonth, round2 } from "@/lib/scheduling";
-import { businessDateTime, nextBusinessMonth } from "@/lib/time";
+import { computeFamilyMonth, computeFamilyRange, round2 } from "@/lib/scheduling";
+import { businessDateTime, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
 import { checkoutReturnUrl } from "@/lib/checkout";
-import { applySkippedCreditsToStripe } from "@/lib/credits";
+import { applySkippedCreditsToStripe, noticeAmounts } from "@/lib/credits";
+import { hasInvoiceInPeriod } from "@/lib/midmonth";
 
 export type PriceKind = "recurring" | "one-time";
 
@@ -287,4 +288,88 @@ export async function ensureSubscriptionsForCardSavedFamilies(): Promise<{
   }
 
   return { created, deferred, failed };
+}
+
+/**
+ * Send an immediate invoice for the family's scheduled lessons in the current
+ * month. Unlike the onboarding flow, this does not require a card on file — the
+ * customer pays via a Stripe invoice payment link. After payment, the webhook
+ * creates a subscription so future months are billed automatically.
+ *
+ * The invoice is marked with metadata `{ type: "immediate_invoice" }` so the
+ * webhook can distinguish it from mid-month bills and auto-subscribe on payment.
+ */
+export async function sendImmediateInvoice(familyId: string): Promise<{
+  invoiceId: string;
+  invoiceUrl: string;
+  amount: number;
+}> {
+  const family = await prisma.family.findUnique({
+    where: { id: familyId },
+    include: { students: { where: { active: true } } },
+  });
+  if (!family) throw new Error("Family not found");
+
+  const stripe = getStripe();
+
+  // Ensure a Stripe Customer exists.
+  let customerId = family.stripeCustomerId;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: family.email,
+      name: family.name,
+      metadata: { familyId: family.id },
+    });
+    customerId = customer.id;
+    await prisma.family.update({ where: { id: family.id }, data: { stripeCustomerId: customer.id } });
+  }
+
+  // Compute billable lessons for the current month.
+  const { start: monthStart, end: monthEnd } = currentBusinessMonthRange();
+  const summary = await computeFamilyRange(familyId, monthStart, monthEnd);
+  if (summary.totalAmount <= 0) {
+    throw new Error("No billable lessons in the current month");
+  }
+
+  // Idempotency guard: don't create a second invoice for the same month.
+  const existingInvoice = await hasInvoiceInPeriod(familyId, monthStart, monthEnd);
+  if (existingInvoice) {
+    throw new Error("This month has already been invoiced (invoice " + existingInvoice + ")");
+  }
+
+  // Apply any unapplied missed-lesson credits so the invoice is discounted.
+  await applySkippedCreditsToStripe(family.id, customerId);
+
+  const { netAmount } = await noticeAmounts(familyId, summary.totalAmount);
+
+  // Create a send-invoice invoice (customer pays via link, not auto-charged).
+  const invoice = await stripe.invoices.create({
+    customer: customerId,
+    collection_method: "send_invoice",
+    days_until_due: 7,
+    metadata: { familyId: family.id, type: "immediate_invoice" },
+  });
+
+  // Add a line item per student.
+  for (const line of summary.students) {
+    if (line.hours <= 0) continue;
+    const priceId = await ensurePriceForStudent(line.studentId, "one-time");
+    const qty = Math.max(round2(line.hours * BILLING_UNITS_PER_HOUR), 0);
+    await stripe.invoiceItems.create({
+      customer: customerId,
+      invoice: invoice.id,
+      price: priceId,
+      quantity: qty,
+    });
+  }
+
+  // Finalize and send the invoice email.
+  const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+  await stripe.invoices.sendInvoice(invoice.id);
+
+  return {
+    invoiceId: invoice.id,
+    invoiceUrl: finalized.hosted_invoice_url ?? `https://invoice.stripe.com/${invoice.id}`,
+    amount: netAmount,
+  };
 }

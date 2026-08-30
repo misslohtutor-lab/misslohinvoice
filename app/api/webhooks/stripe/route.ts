@@ -73,6 +73,40 @@ export async function POST(req: NextRequest) {
           await recordInvoiceLines(family.id, invoice);
           await markSkippedCreditsApplied(family.id, invoice);
           await sendReceipt(family, invoice, (await receiptPeriod(family.id, invoice)) ?? undefined);
+
+          // Auto-subscribe after immediate invoice payment: if the family has
+          // no subscription yet and this was an immediate invoice (sent via
+          // sendImmediateInvoice), create one so future months are billed
+          // automatically.
+          if (
+            !family.subscriptionId &&
+            invoice.metadata?.type === "immediate_invoice" &&
+            typeof invoice.customer === "string"
+          ) {
+            try {
+              // Save the payment method used for this invoice as the default.
+              const paymentIntent = invoice.payment_intent
+                ? await getStripe().paymentIntents.retrieve(String(invoice.payment_intent))
+                : null;
+              const paymentMethod = paymentIntent?.payment_method
+                ? String(paymentIntent.payment_method)
+                : undefined;
+
+              if (paymentMethod) {
+                await getStripe().customers.update(invoice.customer, {
+                  invoice_settings: { default_payment_method: paymentMethod },
+                });
+                const method = await getStripe().paymentMethods.retrieve(paymentMethod);
+                if (method.card?.last4) {
+                  await prisma.family.update({ where: { id: family.id }, data: { cardLast4: method.card.last4 } });
+                }
+              }
+
+              await createSubscriptionAfterSetup(family.id, invoice.customer, paymentMethod ?? null);
+            } catch (err) {
+              console.error("[stripe webhook] auto-subscribe after immediate invoice failed:", err);
+            }
+          }
         }
         break;
       }

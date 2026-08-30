@@ -8,7 +8,7 @@ import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
 import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
 import type { MonthSummary } from "@/lib/scheduling";
 import { timeToMinutes } from "@/lib/ui";
-import { createOnboardingCheckout, createSubscriptionAfterSetup, syncNextMonthQuantities } from "@/lib/subscriptions";
+import { createOnboardingCheckout, createSubscriptionAfterSetup, syncNextMonthQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
 import { sendOnboarding } from "@/lib/email-templates";
@@ -342,4 +342,25 @@ export async function markLesson(formData: FormData) {
 
   revalidatePath(`/admin/families/${lesson.student.familyId}`);
   revalidatePath("/admin/schedule");
+}
+
+export type InvoiceResult =
+  | { ok: true; invoiceId: string; invoiceUrl: string; amount: number }
+  | { ok: false; error: string };
+
+/**
+ * Send an immediate invoice for the family's current-month lessons. The
+ * customer pays via a Stripe invoice link — no card on file required. After
+ * payment, the webhook auto-creates a subscription for future months.
+ */
+export async function sendInvoiceNow(formData: FormData): Promise<InvoiceResult> {
+  await requireAdmin();
+  const familyId = String(formData.get("familyId") ?? "");
+  try {
+    const result = await sendImmediateInvoice(familyId);
+    revalidatePath(`/admin/families/${familyId}`);
+    return { ok: true, invoiceId: result.invoiceId, invoiceUrl: result.invoiceUrl, amount: result.amount };
+  } catch (err) {
+    return logActionError("sendInvoiceNow", err);
+  }
 }

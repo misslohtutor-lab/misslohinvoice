@@ -6,6 +6,7 @@ import { money, formatDate, formatTime, badge, QUARTER_HOUR_TIMES } from "@/lib/
 import { OnboardingButton } from "@/components/onboarding-button";
 import { CreateSubscriptionButton } from "@/components/create-subscription-button";
 import { BillingEmailButton } from "@/components/billing-email-button";
+import { SendInvoiceButton } from "@/components/send-invoice-button";
 import { GenerateLessonsButton } from "@/components/generate-lessons-button";
 import { ConfirmButton } from "@/components/confirm-button";
 import { DayOfWeek } from "@/generated/prisma/enums";
@@ -87,6 +88,7 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
         </div>
         <div className="flex flex-col items-end gap-2">
           {family.cardLast4 && !family.subscriptionId && <CreateSubscriptionButton familyId={family.id} />}
+          {!family.subscriptionId && <SendInvoiceButton familyId={family.id} />}
           <OnboardingButton familyId={family.id} />
           <form action={deleteFamily}>
             <input type="hidden" name="id" value={family.id} />
