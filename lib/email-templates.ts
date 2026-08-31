@@ -184,10 +184,16 @@ export async function sendLessonReminder(family: Family, lessonId: string, stude
 
   const when = formatBusinessDate(start, { weekday: "long", month: "long", day: "numeric" }, family.timeZone);
   const time = `${formatBusinessTime(start, { timeZoneName: "short" }, family.timeZone)} – ${formatBusinessTime(end, { timeZoneName: "short" }, family.timeZone)}`;
+  const zoom = ZOOM_LINK
+    ? `<p>Join the lesson on Zoom:</p>
+       <p><a href="${esc(ZOOM_LINK)}" style="display:inline-block;background:#1a73e8;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Join Zoom lesson</a></p>
+       <p style="color:#888;font-size:13px">If the button doesn't work, paste this link into your browser:<br>${esc(ZOOM_LINK)}</p>`
+    : "";
   const html = layout("Upcoming lesson", `
     <p>This is a reminder of your upcoming lesson:</p>
     <p style="font-size:18px"><strong>${esc(studentName)}</strong></p>
     <p><strong>${when}</strong> at <strong>${time}</strong></p>
+    ${zoom}
   `);
   const res = await sendEmail({ to: family.email, subject: `Upcoming lesson: ${studentName} ${when}`, html });
   await finish(message.id, res.sent, html);
