@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { getStripe, quarterHourUnitAmount } from "@/lib/stripe";
 import { BILLING_CURRENCY, BILLING_UNITS_PER_HOUR } from "@/lib/currency";
-import { computeFamilyMonth, computeFamilyRange, round2 } from "@/lib/scheduling";
-import { businessDateTime, businessMonthRange, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
+import { computeFamilyMonth, computeFamilyRange, round2, type StudentMonthLine } from "@/lib/scheduling";
+import { businessDateParts, businessDateTime, businessMonthRange, currentBusinessMonthRange, monthPeriodLabel, nextBusinessMonth } from "@/lib/time";
 import { checkoutReturnUrl } from "@/lib/checkout";
 import { applySkippedCreditsToStripe, noticeAmounts } from "@/lib/credits";
 
@@ -293,39 +293,32 @@ export async function ensureSubscriptionsForCardSavedFamilies(): Promise<{
   return { created, deferred, failed };
 }
 
+export interface ImmediateInvoicePreview {
+  family: { name: string; email: string };
+  periodStart: Date;
+  periodEnd: Date;
+  periodLabel: string;
+  /** True when the current month had nothing billable and the next month is invoiced up front. */
+  prepaid: boolean;
+  prepaidMonth: string | null;
+  lines: StudentMonthLine[];
+  totalHours: number;
+  grossTotal: number;
+  creditAmount: number;
+  netAmount: number;
+}
+
 /**
- * Send an immediate invoice for the family's scheduled lessons in the current
- * month. Unlike the onboarding flow, this does not require a card on file — the
- * customer pays via a Stripe invoice payment link. After payment, the webhook
- * creates a subscription so future months are billed automatically.
- *
- * The invoice is marked with metadata `{ type: "immediate_invoice" }` so the
- * webhook can distinguish it from mid-month bills and auto-subscribe on payment.
+ * Compute everything an immediate invoice will contain, without hitting Stripe.
+ * Shared by the admin preview (so details can be confirmed before sending) and
+ * by sendImmediateInvoice itself (so the actual send matches the preview).
  */
-export async function sendImmediateInvoice(familyId: string): Promise<{
-  invoiceId: string;
-  invoiceUrl: string;
-  amount: number;
-}> {
+export async function computeImmediateInvoicePreview(familyId: string): Promise<ImmediateInvoicePreview> {
   const family = await prisma.family.findUnique({
     where: { id: familyId },
     include: { students: { where: { active: true } } },
   });
   if (!family) throw new Error("Family not found");
-
-  const stripe = getStripe();
-
-  // Ensure a Stripe Customer exists.
-  let customerId = family.stripeCustomerId;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: family.email,
-      name: family.name,
-      metadata: { familyId: family.id },
-    });
-    customerId = customer.id;
-    await prisma.family.update({ where: { id: family.id }, data: { stripeCustomerId: customer.id } });
-  }
 
   // Try current month first (mid-month billing), then next month (prepaid).
   const { start: curStart, end: curEnd } = currentBusinessMonthRange();
@@ -355,10 +348,63 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     throw new Error("This month has already been invoiced (invoice " + existingInvoice + ")");
   }
 
+  const { creditAmount, netAmount } = await noticeAmounts(familyId, summary.totalAmount);
+
+  const periodParts = businessDateParts(monthStart);
+  return {
+    family: { name: family.name, email: family.email },
+    periodStart: monthStart,
+    periodEnd: monthEnd,
+    periodLabel: monthPeriodLabel(periodParts.year, periodParts.month),
+    prepaid: prepaidMonth !== null,
+    prepaidMonth,
+    lines: summary.students,
+    totalHours: summary.totalHours,
+    grossTotal: summary.totalAmount,
+    creditAmount,
+    netAmount,
+  };
+}
+
+/**
+ * Send an immediate invoice for the family's scheduled lessons in the current
+ * month. Unlike the onboarding flow, this does not require a card on file — the
+ * customer pays via a Stripe invoice payment link. After payment, the webhook
+ * creates a subscription so future months are billed automatically.
+ *
+ * The invoice is marked with metadata `{ type: "immediate_invoice" }` so the
+ * webhook can distinguish it from mid-month bills and auto-subscribe on payment.
+ */
+export async function sendImmediateInvoice(familyId: string): Promise<{
+  invoiceId: string;
+  invoiceUrl: string;
+  amount: number;
+}> {
+  // Reuse the preview so the sent invoice always reflects what was confirmed.
+  const preview = await computeImmediateInvoicePreview(familyId);
+
+  const family = await prisma.family.findUnique({
+    where: { id: familyId },
+    include: { students: { where: { active: true } } },
+  });
+  if (!family) throw new Error("Family not found");
+
+  const stripe = getStripe();
+
+  // Ensure a Stripe Customer exists.
+  let customerId = family.stripeCustomerId;
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: family.email,
+      name: family.name,
+      metadata: { familyId: family.id },
+    });
+    customerId = customer.id;
+    await prisma.family.update({ where: { id: family.id }, data: { stripeCustomerId: customer.id } });
+  }
+
   // Apply any unapplied missed-lesson credits so the invoice is discounted.
   await applySkippedCreditsToStripe(family.id, customerId);
-
-  const { netAmount } = await noticeAmounts(familyId, summary.totalAmount);
 
   // Create a send-invoice invoice (customer pays via link, not auto-charged).
   // `prepaidMonth` tells the webhook that the next month was billed up front,
@@ -370,12 +416,12 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     metadata: {
       familyId: family.id,
       type: "immediate_invoice",
-      ...(prepaidMonth ? { prepaidMonth } : {}),
+      ...(preview.prepaidMonth ? { prepaidMonth: preview.prepaidMonth } : {}),
     },
   });
 
   // Add a line item per student.
-  for (const line of summary.students) {
+  for (const line of preview.lines) {
     if (line.hours <= 0) continue;
     const priceId = await ensurePriceForStudent(line.studentId, "one-time");
     const qty = Math.max(round2(line.hours * BILLING_UNITS_PER_HOUR), 0);
@@ -397,16 +443,16 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     data: {
       familyId: family.id,
       stripeInvoiceId: invoice.id,
-      periodStart: monthStart,
-      periodEnd: monthEnd,
-      amount: netAmount,
+      periodStart: preview.periodStart,
+      periodEnd: preview.periodEnd,
+      amount: preview.netAmount,
     },
   });
 
   return {
     invoiceId: invoice.id,
     invoiceUrl: finalized.hosted_invoice_url ?? `https://invoice.stripe.com/${invoice.id}`,
-    amount: netAmount,
+    amount: preview.netAmount,
   };
 }
 

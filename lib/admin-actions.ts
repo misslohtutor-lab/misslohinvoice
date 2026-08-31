@@ -8,7 +8,7 @@ import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
 import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
 import type { MonthSummary } from "@/lib/scheduling";
 import { timeToMinutes } from "@/lib/ui";
-import { createOnboardingCheckout, createSubscriptionAfterSetup, syncNextMonthQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
+import { createOnboardingCheckout, createSubscriptionAfterSetup, computeImmediateInvoicePreview, syncNextMonthQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
 import { sendOnboarding } from "@/lib/email-templates";
@@ -360,6 +360,55 @@ export async function markLesson(formData: FormData) {
 export type InvoiceResult =
   | { ok: true; invoiceId: string; invoiceUrl: string; amount: number }
   | { ok: false; error: string };
+
+export type InvoicePreview =
+  | {
+      ok: true;
+      to: string;
+      familyName: string;
+      periodLabel: string;
+      prepaid: boolean;
+      lines: Array<{ studentName: string; lessons: number; hours: number; rate: number; amount: number }>;
+      totalHours: number;
+      grossTotal: number;
+      creditAmount: number;
+      netAmount: number;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Dry-run the immediate-invoice email: compute everything it will contain
+ * without creating a Stripe invoice or sending anything, so an admin can
+ * confirm the details (recipient, period, itemized charges, credits, total)
+ * before triggering sendInvoiceNow.
+ */
+export async function previewImmediateInvoice(familyId: string): Promise<InvoicePreview> {
+  await requireAdmin();
+  try {
+    const preview = await computeImmediateInvoicePreview(familyId);
+    return {
+      ok: true,
+      to: preview.family.email,
+      familyName: preview.family.name,
+      periodLabel: preview.periodLabel,
+      prepaid: preview.prepaid,
+      lines: preview.lines.map((l) => ({
+        studentName: l.studentName,
+        lessons: l.lessons,
+        hours: l.hours,
+        rate: l.rate,
+        amount: l.amount,
+      })),
+      totalHours: preview.totalHours,
+      grossTotal: preview.grossTotal,
+      creditAmount: preview.creditAmount,
+      netAmount: preview.netAmount,
+    };
+  } catch (err) {
+    // Business errors (already invoiced, nothing to bill) are safe to surface.
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 /**
  * Send an immediate invoice for the family's current-month lessons. The
