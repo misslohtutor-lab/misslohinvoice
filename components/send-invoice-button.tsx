@@ -190,12 +190,22 @@ export function SendInvoiceButton({ familyId }: { familyId: string }) {
                     >
                       Cancel
                     </button>
+                    {state?.ok ? (
+                    <button
+                      type="button"
+                      onClick={handleClose}
+                      className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-medium text-white hover:bg-violet-600"
+                    >
+                      Close
+                    </button>
+                    ) : (
                     <button
                       disabled={pending}
                       className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
                     >
                       {pending ? "Sending…" : "Confirm & send invoice"}
                     </button>
+                    )}
                   </div>
                 </form>
               </>

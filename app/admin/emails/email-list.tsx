@@ -12,6 +12,7 @@ const EMAIL_TYPES: Record<string, string> = {
   ONBOARDING_COMPLETE: "Onboarding done",
   ONBOARDING_INVITE: "Onboarding invite",
   MAGIC_LINK: "Magic link",
+  IMMEDIATE_INVOICE: "Invoice",
 };
 
 interface Email {

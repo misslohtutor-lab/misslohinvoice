@@ -2,9 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { getStripe, quarterHourUnitAmount } from "@/lib/stripe";
 import { BILLING_CURRENCY, BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import { computeFamilyMonth, computeFamilyRange, round2, type StudentMonthLine } from "@/lib/scheduling";
-import { businessDateParts, businessDateTime, businessMonthRange, currentBusinessMonthRange, monthPeriodLabel, nextBusinessMonth } from "@/lib/time";
+import { businessDateParts, businessDateTime, businessMonthRange, currentBusinessMonthRange, formatBusinessDate, formatBusinessTime, monthPeriodLabel, nextBusinessMonth } from "@/lib/time";
 import { checkoutReturnUrl } from "@/lib/checkout";
 import { applySkippedCreditsToStripe, noticeAmounts } from "@/lib/credits";
+import { layout, esc } from "@/lib/email";
+import { money } from "@/lib/ui";
 
 export type PriceKind = "recurring" | "one-time";
 
@@ -367,6 +369,65 @@ export async function computeImmediateInvoicePreview(familyId: string): Promise<
 }
 
 /**
+ * Render the invoice email as a branded HTML snapshot, mirroring the admin
+ * preview so the Emails tab shows what the family was sent. (The actual send
+ * is done by Stripe via `stripe.invoices.sendInvoice`.)
+ */
+function immediateInvoiceHtml(preview: ImmediateInvoicePreview): string {
+  const rows = preview.lines
+    .filter((l) => l.hours > 0)
+    .map(
+      (l) =>
+        `<tr><td>${esc(l.studentName)}</td><td>${l.lessons}</td><td>${l.hours}h</td><td>${money(l.rate)}/hr</td><td style="text-align:right">${money(l.amount)}</td></tr>`
+    )
+    .join("");
+  const tz = preview.family.timeZone;
+  const slotRows = preview.lines
+    .flatMap((l) =>
+      l.lessonTimes.map((d) => ({
+        student: l.studentName,
+        date: formatBusinessDate(d, { weekday: "short", month: "short", day: "numeric" }, tz),
+        time: formatBusinessTime(d, { timeZoneName: "short" }, tz),
+      }))
+    )
+    .map(
+      (s) =>
+        `<tr><td style="padding:4px 0">${esc(s.student)}</td><td style="padding:4px 0;text-align:right">${s.date}</td><td style="padding:4px 0;text-align:right">${s.time}</td></tr>`
+    )
+    .join("");
+  return layout(`Your invoice for ${esc(preview.periodLabel)}`, `
+    <p>Hi ${esc(preview.family.name)},</p>
+    <p>Here is your invoice for lessons in <strong>${esc(preview.periodLabel)}</strong>
+    ${preview.prepaid ? " (billed up front)" : ""}. Amount is due immediately.</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0">
+      <thead><tr style="border-bottom:1px solid #ddd;text-align:left">
+        <th style="padding:6px">Student</th><th style="padding:6px">Lessons</th><th style="padding:6px">Hours</th><th style="padding:6px">Rate</th><th style="padding:6px;text-align:right">Amount</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="border-top:1px solid #ddd">
+        <td colspan="4" style="padding:6px;font-weight:600">Total</td>
+        <td style="padding:6px;text-align:right;font-weight:600">${money(preview.grossTotal)}</td>
+      </tr>
+      ${preview.creditAmount !== 0
+        ? `<tr style="color:#087f5b"><td colspan="4" style="padding:6px">Credits (missed lessons)</td><td style="padding:6px;text-align:right">${money(Math.abs(preview.creditAmount))}</td></tr>`
+        : ""}
+      <tr><td colspan="4" style="padding:6px;font-weight:600">Amount due</td><td style="padding:6px;text-align:right;font-weight:600">${money(preview.netAmount)}</td></tr>
+      </tfoot>
+    </table>
+    <p style="margin:16px 0 0;font-weight:600">Scheduled lessons</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tbody>${slotRows}</tbody>
+    </table>
+    <div style="background:#f8f8f8;border-left:3px solid #e5e5e5;border-radius:6px;padding:12px 16px;margin-top:16px">
+      <p style="margin:0;color:#555;font-size:13px;line-height:1.6">
+        Stripe emails this invoice with a <strong>Pay invoice</strong> button. Once paid,
+        the family is automatically subscribed so future months bill on the 1st.
+      </p>
+    </div>
+  `);
+}
+
+/**
  * Send an immediate invoice for the family's scheduled lessons in the current
  * month. Unlike the onboarding flow, this does not require a card on file — the
  * customer pays via a Stripe invoice payment link. After payment, the webhook
@@ -436,6 +497,24 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
   // Finalize and send the invoice email.
   const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
   await stripe.invoices.sendInvoice(invoice.id);
+
+  // Record the sent invoice email so it appears in the admin Emails tab. The
+  // send itself is done by Stripe, so the row is marked as sent.
+  try {
+    await prisma.message.create({
+      data: {
+        familyId: family.id,
+        to: family.email,
+        type: "IMMEDIATE_INVOICE",
+        subject: `Your invoice for ${preview.periodLabel}`,
+        html: immediateInvoiceHtml(preview),
+        sent: true,
+      },
+    });
+  } catch (err) {
+    // Logging a sent email must never fail the invoice send itself.
+    console.error("[subscriptions] could not record immediate-invoice email:", err);
+  }
 
   // Record the sent invoice so the guard above catches repeats. Written last so
   // a failed send doesn't block a retry.

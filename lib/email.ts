@@ -8,7 +8,8 @@ type EmailType =
   | "PAYMENT_FAILED"
   | "ONBOARDING_COMPLETE"
   | "ONBOARDING_INVITE"
-  | "MAGIC_LINK";
+  | "MAGIC_LINK"
+  | "IMMEDIATE_INVOICE";
 
 export interface EmailRecipient {
   to: string;

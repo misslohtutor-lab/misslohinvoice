@@ -271,7 +271,7 @@ model Message {
   id        String   @id @default(cuid())
   familyId  String?
   to        String
-   type      String // CHARGE_NOTICE | RECEIPT | LESSON_REMINDER | PAYMENT_FAILED | ONBOARDING_COMPLETE | ONBOARDING_INVITE | MAGIC_LINK
+   type      String // CHARGE_NOTICE | RECEIPT | LESSON_REMINDER | PAYMENT_FAILED | ONBOARDING_COMPLETE | ONBOARDING_INVITE | MAGIC_LINK | IMMEDIATE_INVOICE
   subject   String
   html      String?
   sent      Boolean  @default(true)
