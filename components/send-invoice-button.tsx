@@ -92,6 +92,10 @@ export function SendInvoiceButton({ familyId }: { familyId: string }) {
                     Here is your invoice for lessons in <strong>{preview.periodLabel}</strong>
                     {preview.prepaid ? " (billed up front)" : ""}. Amount is due immediately.
                   </p>
+                  <div className="mt-3 rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <strong>Payment method:</strong> We no longer accept payment thru eTransfer. Please pay by
+                    credit card using the <strong>Pay Invoice</strong> button.
+                  </div>
                   <table className="mt-3 w-full text-sm">
                     <thead>
                       <tr className="border-b border-zinc-200 text-left text-zinc-500">

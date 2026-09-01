@@ -399,6 +399,12 @@ function immediateInvoiceHtml(preview: ImmediateInvoicePreview): string {
     <p>Hi ${esc(preview.family.name)},</p>
     <p>Here is your invoice for lessons in <strong>${esc(preview.periodLabel)}</strong>
     ${preview.prepaid ? " (billed up front)" : ""}. Amount is due immediately.</p>
+    <div style="background:#fff4e5;border-left:3px solid #f59e0b;border-radius:6px;padding:12px 16px;margin:16px 0">
+      <p style="margin:0;color:#7c4a03;font-size:13px;line-height:1.6">
+        <strong>Payment method:</strong> We no longer accept payment thru eTransfer. Please pay by credit card
+        using the <strong>Pay Invoice</strong> button.
+      </p>
+    </div>
     <table style="width:100%;border-collapse:collapse;margin:16px 0">
       <thead><tr style="border-bottom:1px solid #ddd;text-align:left">
         <th style="padding:6px">Student</th><th style="padding:6px">Lessons</th><th style="padding:6px">Hours</th><th style="padding:6px">Rate</th><th style="padding:6px;text-align:right">Amount</th>
@@ -474,6 +480,8 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     customer: customerId,
     collection_method: "send_invoice",
     days_until_due: 0,
+    description:
+      "We no longer accept payment thru eTransfer. Please pay by credit card using the Pay Invoice button.",
     metadata: {
       familyId: family.id,
       type: "immediate_invoice",
