@@ -366,9 +366,17 @@ export type InvoicePreview =
       ok: true;
       to: string;
       familyName: string;
+      timeZone: string;
       periodLabel: string;
       prepaid: boolean;
-      lines: Array<{ studentName: string; lessons: number; hours: number; rate: number; amount: number }>;
+      lines: Array<{
+        studentName: string;
+        lessons: number;
+        hours: number;
+        rate: number;
+        amount: number;
+        lessonSlots: Array<{ date: string; time: string }>;
+      }>;
       totalHours: number;
       grossTotal: number;
       creditAmount: number;
@@ -390,6 +398,7 @@ export async function previewImmediateInvoice(familyId: string): Promise<Invoice
       ok: true,
       to: preview.family.email,
       familyName: preview.family.name,
+      timeZone: preview.family.timeZone,
       periodLabel: preview.periodLabel,
       prepaid: preview.prepaid,
       lines: preview.lines.map((l) => ({
@@ -398,6 +407,10 @@ export async function previewImmediateInvoice(familyId: string): Promise<Invoice
         hours: l.hours,
         rate: l.rate,
         amount: l.amount,
+        lessonSlots: l.lessonTimes.map((d) => ({
+          date: formatBusinessDate(d, { weekday: "short", month: "short", day: "numeric" }, preview.family.timeZone),
+          time: formatBusinessTime(d, { timeZoneName: "short" }, preview.family.timeZone),
+        })),
       })),
       totalHours: preview.totalHours,
       grossTotal: preview.grossTotal,

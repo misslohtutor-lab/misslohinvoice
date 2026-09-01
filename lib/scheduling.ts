@@ -124,6 +124,8 @@ export interface StudentMonthLine {
   rate: number;
   amount: number;
   lessons: number;
+  /** When each billing-relevant lesson starts, ascending. */
+  lessonTimes: Date[];
 }
 
 export interface MonthSummary {
@@ -160,7 +162,8 @@ export async function computeFamilyMonth(
         date: { gte: monthStart, lt: monthEnd },
         status: { in: [LessonStatus.SCHEDULED, LessonStatus.COMPLETED] },
       },
-      select: { durationHours: true },
+      select: { durationHours: true, date: true },
+      orderBy: { date: "asc" },
     });
     const hours = lessons.reduce((acc, l) => acc + l.durationHours, 0);
     const amount = hours * student.hourlyRate;
@@ -171,6 +174,7 @@ export async function computeFamilyMonth(
       rate: student.hourlyRate,
       amount: round2(amount),
       lessons: lessons.length,
+      lessonTimes: lessons.map((l) => l.date),
     });
   }
 
@@ -212,7 +216,8 @@ export async function computeFamilyRange(
         date: { gte: start, lt: end },
         status: { in: [LessonStatus.SCHEDULED, LessonStatus.COMPLETED] },
       },
-      select: { durationHours: true },
+      select: { durationHours: true, date: true },
+      orderBy: { date: "asc" },
     });
     const hours = lessons.reduce((acc, l) => acc + l.durationHours, 0);
     const amount = hours * student.hourlyRate;
@@ -223,6 +228,7 @@ export async function computeFamilyRange(
       rate: student.hourlyRate,
       amount: round2(amount),
       lessons: lessons.length,
+      lessonTimes: lessons.map((l) => l.date),
     });
   }
 

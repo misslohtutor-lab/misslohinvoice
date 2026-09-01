@@ -90,8 +90,7 @@ export function SendInvoiceButton({ familyId }: { familyId: string }) {
                   <p>Hi {preview.familyName},</p>
                   <p className="mt-3">
                     Here is your invoice for lessons in <strong>{preview.periodLabel}</strong>
-                    {preview.prepaid ? " (billed up front)" : ""}. Please pay it within <strong>7 days</strong> of
-                    receipt — no card on file is required.
+                    {preview.prepaid ? " (billed up front)" : ""}. Amount is due immediately.
                   </p>
                   <table className="mt-3 w-full text-sm">
                     <thead>
@@ -139,6 +138,32 @@ export function SendInvoiceButton({ familyId }: { familyId: string }) {
                         <td className="pt-1 text-right font-semibold">{money(preview.netAmount)}</td>
                       </tr>
                     </tfoot>
+                  </table>
+                  <p className="mt-4 text-xs font-semibold text-zinc-500">Lessons</p>
+                  <table className="mt-1 w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-200 text-left text-zinc-500">
+                        <th className="py-1 pr-4">Student</th>
+                        <th className="py-1 pr-4">Date</th>
+                        <th className="py-1 text-right">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.lines.map((l) => {
+                        return l.lessonSlots.map((s, i) => (
+                          <tr
+                            key={`${l.studentName}-${i}`}
+                            className="border-b border-zinc-50"
+                          >
+                            <td className="py-1 pr-4 font-medium">
+                              {i === 0 ? l.studentName : ""}
+                            </td>
+                            <td className="py-1 pr-4 text-zinc-600">{s.date}</td>
+                            <td className="py-1 text-right text-zinc-600">{s.time}</td>
+                          </tr>
+                        ));
+                      })}
+                    </tbody>
                   </table>
                   <p className="mt-3 text-xs text-zinc-500">
                     Stripe emails this with a <strong>Pay invoice</strong> button. Once paid, the family is

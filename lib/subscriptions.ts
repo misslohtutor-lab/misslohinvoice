@@ -294,7 +294,7 @@ export async function ensureSubscriptionsForCardSavedFamilies(): Promise<{
 }
 
 export interface ImmediateInvoicePreview {
-  family: { name: string; email: string };
+  family: { name: string; email: string; timeZone: string };
   periodStart: Date;
   periodEnd: Date;
   periodLabel: string;
@@ -352,7 +352,7 @@ export async function computeImmediateInvoicePreview(familyId: string): Promise<
 
   const periodParts = businessDateParts(monthStart);
   return {
-    family: { name: family.name, email: family.email },
+    family: { name: family.name, email: family.email, timeZone: family.timeZone },
     periodStart: monthStart,
     periodEnd: monthEnd,
     periodLabel: monthPeriodLabel(periodParts.year, periodParts.month),
@@ -412,7 +412,7 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
   const invoice = await stripe.invoices.create({
     customer: customerId,
     collection_method: "send_invoice",
-    days_until_due: 7,
+    days_until_due: 0,
     metadata: {
       familyId: family.id,
       type: "immediate_invoice",
