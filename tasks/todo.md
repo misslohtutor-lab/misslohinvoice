@@ -127,3 +127,24 @@
   guard).
 - Behavior-preserving; the `periodEnd: { lte: monthEnd }` fix is untouched. `npm run lint` and `npm run build` pass.
 - Verified `/admin` loads with a valid session.
+
+# Fix magic-link login loop
+
+- [x] Inspect the Auth.js magic-link flow, callback handling, and route guards.
+- [x] Reproduce the redirect loop with a valid authorized sign-in link.
+- [x] Preserve the requested callback URL when requesting a sign-in link.
+- [x] Run lint, build, and final diff verification.
+
+## Review
+
+- The valid link was creating a database session, but the login server action did
+  not pass `redirectTo` to Auth.js. Auth.js therefore used the referrer
+  `/login?callbackUrl=%2Fadmin` as the callback URL, sending the authenticated
+  browser back to the login form.
+- `app/login/page.tsx` now carries `callbackUrl` through to `signIn`, defaulting
+  direct visits to `/`.
+- `lib/admin.ts` preserves `/admin` when its server-side guard must redirect to
+  login.
+- `npm run lint`, `npm run build`, and `git diff --check` pass.
+- Live verification showed the prior callback URL and separately confirmed that
+  Auth.js creates a session and redirects correctly when given `/admin`.

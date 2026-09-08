@@ -3,8 +3,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { rateLimit } from "@/lib/rate-limit";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string }> }) {
-  const { sent, error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ sent?: string; error?: string; callbackUrl?: string }> }) {
+  const { sent, error, callbackUrl } = await searchParams;
 
   async function submit(formData: FormData) {
     "use server";
@@ -13,7 +13,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     if (!rateLimit(`login:${ip}:${email}`)) {
       redirect("/login?error=rate_limited");
     }
-    await signIn("email", { email, redirect: false });
+    await signIn("email", { email, redirect: false, redirectTo: callbackUrl ?? "/" });
     redirect("/login?sent=1");
   }
 
