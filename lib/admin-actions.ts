@@ -310,54 +310,66 @@ export async function deleteFamily(formData: FormData) {
   redirect("/admin/families");
 }
 
+export type MarkLessonResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 /**
  * Set a lesson's status. Marking it MISSED (student no-show) records a negative
  * Adjustment on the family that offsets the next bill (MISSED_HALF records half
  * the credit); setting it back removes the credit.
  */
-export async function markLesson(formData: FormData) {
+export async function markLesson(formData: FormData): Promise<MarkLessonResult> {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "") as LessonStatus;
-  const lesson = await prisma.lesson.findUniqueOrThrow({
-    where: { id },
-    include: { student: true },
-  });
+  try {
+    const lesson = await prisma.lesson.findUniqueOrThrow({
+      where: { id },
+      include: { student: true },
+    });
 
-  const amount = lesson.durationHours * lesson.student.hourlyRate;
-  // MISSED_HALF (student attended part of the lesson) credits half the fee.
-  const creditAmount = status === "MISSED_HALF" ? -amount / 2 : -amount;
+    const amount = lesson.durationHours * lesson.student.hourlyRate;
+    // MISSED_HALF (student attended part of the lesson) credits half the fee.
+    const creditAmount = status === "MISSED_HALF" ? -amount / 2 : -amount;
 
-  const existingCredits = await prisma.adjustment.findMany({
-    where: { reason: { startsWith: `Missed lesson ${lesson.id}` } },
-    select: { id: true, appliedToInvoice: true, stripeBalanceTransactionId: true },
-  });
-  if (existingCredits.some((credit) => credit.appliedToInvoice || credit.stripeBalanceTransactionId)) {
-    throw new Error("This missed-lesson credit has already been sent to Stripe and cannot be reversed here");
-  }
+    const existingCredits = await prisma.adjustment.findMany({
+      where: { reason: { startsWith: `Missed lesson ${lesson.id}` } },
+      select: { id: true, appliedToInvoice: true, stripeBalanceTransactionId: true },
+    });
+    if (existingCredits.some((credit) => credit.appliedToInvoice || credit.stripeBalanceTransactionId)) {
+      return {
+        ok: false,
+        error: "This missed-lesson credit has already been sent to Stripe (it discounted a sent invoice) and can't be reversed automatically. Void the credit on Stripe first, then restore the lesson.",
+      };
+    }
 
-  // Remove any unapplied local credit first (idempotent).
-  await prisma.adjustment.deleteMany({
-    where: { id: { in: existingCredits.map((credit) => credit.id) } },
-  });
+    // Remove any unapplied local credit first (idempotent).
+    await prisma.adjustment.deleteMany({
+      where: { id: { in: existingCredits.map((credit) => credit.id) } },
+    });
 
   // Only genuinely MISSED lessons (e.g. illness) grant a credit — MISSED_HALF
-  // grants a partial credit. SKIPPED (organizational) and other statuses do not.
-  if (status === "MISSED" || status === "MISSED_HALF") {
-    await prisma.adjustment.create({
-      data: {
-        familyId: lesson.student.familyId,
-        amount: round2(creditAmount),
-        remainingAmount: round2(creditAmount),
-        reason: `Missed lesson ${lesson.id} (${lesson.date.toISOString().slice(0, 10)})${status === "MISSED_HALF" ? " — half credit" : ""}`,
-      },
-    });
+    // grants a partial credit. SKIPPED (organizational) and other statuses do not.
+    if (status === "MISSED" || status === "MISSED_HALF") {
+      await prisma.adjustment.create({
+        data: {
+          familyId: lesson.student.familyId,
+          amount: round2(creditAmount),
+          remainingAmount: round2(creditAmount),
+          reason: `Missed lesson ${lesson.id} (${lesson.date.toISOString().slice(0, 10)})${status === "MISSED_HALF" ? " — half credit" : ""}`,
+        },
+      });
+    }
+
+    await prisma.lesson.update({ where: { id }, data: { status } });
+
+    revalidatePath(`/admin/families/${lesson.student.familyId}`);
+    revalidatePath("/admin/schedule");
+    return { ok: true };
+  } catch (err) {
+    return logActionError("markLesson", err);
   }
-
-  await prisma.lesson.update({ where: { id }, data: { status } });
-
-  revalidatePath(`/admin/families/${lesson.student.familyId}`);
-  revalidatePath("/admin/schedule");
 }
 
 export type InvoiceResult =
