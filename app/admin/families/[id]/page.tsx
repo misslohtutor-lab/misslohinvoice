@@ -286,6 +286,7 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
                         <span>
                           {formatDate(l.date, { weekday: "short", month: "short", day: "numeric" })} · {formatTime(l.date)} · {l.durationHours}h
                           {l.status === "MISSED" && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">missed</span>}
+                          {l.status === "MISSED_HALF" && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">missed (half)</span>}
                           {l.status === "SKIPPED" && <span className="ml-1 rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600">skipped</span>}
                         </span>
                         {l.status === "SCHEDULED" ? (
@@ -306,8 +307,16 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
                                 confirmText={`Mark the ${formatDate(l.date)} lesson as missed (illness)? The family gets credit for the next bill.`}
                               />
                             </form>
+                            <form action={markLesson}>
+                              <input type="hidden" name="id" value={l.id} />
+                              <input type="hidden" name="status" value="MISSED_HALF" />
+                              <ConfirmButton
+                                label="Miss half"
+                                confirmText={`Mark the ${formatDate(l.date)} lesson as half missed (student attended part)? The family gets half credit for the next bill.`}
+                              />
+                            </form>
                           </span>
-                        ) : l.status === "MISSED" || l.status === "SKIPPED" ? (
+                        ) : l.status === "MISSED" || l.status === "MISSED_HALF" || l.status === "SKIPPED" ? (
                           <form action={markLesson}>
                             <input type="hidden" name="id" value={l.id} />
                             <input type="hidden" name="status" value="SCHEDULED" />

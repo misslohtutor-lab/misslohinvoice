@@ -132,6 +132,10 @@ export default function FamilyGuidePage() {
               A <strong>credit is automatically applied</strong> to your next month&apos;s bill, offsetting the
               charge for that lesson.
             </li>
+            <li>
+              If your child <strong>attends only part</strong> of a lesson (e.g. joining late or leaving early), we
+              may mark it as <strong>half missed</strong> and apply a <strong>half credit</strong> to your next bill.
+            </li>
           </ul>
 
           <h3 className="mt-4 text-lg font-medium text-zinc-900">Cancelled by the School (Skipped Lesson)</h3>

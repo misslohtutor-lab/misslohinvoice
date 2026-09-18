@@ -148,3 +148,24 @@
 - `npm run lint`, `npm run build`, and `git diff --check` pass.
 - Live verification showed the prior callback URL and separately confirmed that
   Auth.js creates a session and redirects correctly when given `/admin`.
+
+# Half-missed lessons
+
+- [x] Add `MISSED_HALF` to `LessonStatus` in `prisma/schema.prisma`.
+- [x] Create and apply migration `20260918230938_add_half_missed_lesson_status`
+      (ALTER TYPE ... ADD VALUE 'MISSED_HALF') against the Neon DB.
+- [x] `markLesson` grants half the lesson fee (`durationHours × rate ÷ 2`) for
+      `MISSED_HALF`; reason prefix unchanged so reversal/Stripe-sent guards work
+      as before; amounts rounded with `round2`.
+- [x] Admin family page: "Miss half" action button on scheduled lessons, a
+      `missed (half)` badge, and restore handling for `MISSED_HALF`.
+- [x] Family guide mentions partial-miss half credit.
+- [x] Verified: `prisma validate`, `eslint`, `tsc --noEmit`, `next build` all pass.
+
+## Review
+
+- `MISSED_HALF` is not billable (billing counts only `SCHEDULED`/`COMPLETED`)
+  and `getUnappliedCreditAmount`/`applySkippedCreditsToStripe` need no changes —
+  they already sum any negative `Adjustment` by amount.
+- Reversing a half credit (Restore) deletes any unapplied credit matching the
+  lesson's reason prefix, so full → half → restore round-trips cleanly.

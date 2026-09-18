@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { DayOfWeek, LessonStatus, UserRole } from "@/generated/prisma/enums";
 import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } from "@/lib/scheduling";
 import type { MonthSummary } from "@/lib/scheduling";
+import { round2 } from "@/lib/scheduling";
 import { timeToMinutes } from "@/lib/ui";
 import { createOnboardingCheckout, createSubscriptionAfterSetup, computeImmediateInvoicePreview, syncNextMonthQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
 import { queueMidMonthCharge } from "@/lib/midmonth";
@@ -311,8 +312,8 @@ export async function deleteFamily(formData: FormData) {
 
 /**
  * Set a lesson's status. Marking it MISSED (student no-show) records a negative
- * Adjustment on the family that offsets the next bill; setting it back removes
- * the credit.
+ * Adjustment on the family that offsets the next bill (MISSED_HALF records half
+ * the credit); setting it back removes the credit.
  */
 export async function markLesson(formData: FormData) {
   await requireAdmin();
@@ -324,6 +325,8 @@ export async function markLesson(formData: FormData) {
   });
 
   const amount = lesson.durationHours * lesson.student.hourlyRate;
+  // MISSED_HALF (student attended part of the lesson) credits half the fee.
+  const creditAmount = status === "MISSED_HALF" ? -amount / 2 : -amount;
 
   const existingCredits = await prisma.adjustment.findMany({
     where: { reason: { startsWith: `Missed lesson ${lesson.id}` } },
@@ -338,15 +341,15 @@ export async function markLesson(formData: FormData) {
     where: { id: { in: existingCredits.map((credit) => credit.id) } },
   });
 
-  // Only a genuinely MISSED lesson (e.g. illness) grants a credit. SKIPPED
-  // (organizational) and other statuses do not.
-  if (status === "MISSED") {
+  // Only genuinely MISSED lessons (e.g. illness) grant a credit — MISSED_HALF
+  // grants a partial credit. SKIPPED (organizational) and other statuses do not.
+  if (status === "MISSED" || status === "MISSED_HALF") {
     await prisma.adjustment.create({
       data: {
         familyId: lesson.student.familyId,
-        amount: -amount,
-        remainingAmount: -amount,
-        reason: `Missed lesson ${lesson.id} (${lesson.date.toISOString().slice(0, 10)})`,
+        amount: round2(creditAmount),
+        remainingAmount: round2(creditAmount),
+        reason: `Missed lesson ${lesson.id} (${lesson.date.toISOString().slice(0, 10)})${status === "MISSED_HALF" ? " — half credit" : ""}`,
       },
     });
   }

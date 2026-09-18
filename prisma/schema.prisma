@@ -148,6 +148,7 @@ enum LessonStatus {
   SCHEDULED
   COMPLETED
   MISSED // student absent (e.g. illness) → auto-credit applied to next bill
+  MISSED_HALF // student attended part of the lesson → half credit applied to next bill
   SKIPPED // organizer removed the lesson from the calendar → no credit
   CANCELLED
 }
