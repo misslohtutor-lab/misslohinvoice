@@ -6,6 +6,7 @@ import { attachSubscriptionToFamily, createSubscriptionAfterSetup } from "@/lib/
 import { receiptPeriod } from "@/lib/midmonth";
 import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import { sendReceipt, sendPaymentFailure, sendOnboardingConfirmation } from "@/lib/email-templates";
+import { markSkippedCreditsApplied } from "@/lib/credits";
 
 export const runtime = "nodejs";
 
@@ -71,7 +72,15 @@ export async function POST(req: NextRequest) {
             await syncStatus(family.id, invoice.subscription);
           }
           await recordInvoiceLines(family.id, invoice);
-          await markSkippedCreditsApplied(family.id, invoice);
+          // Credits for invoices we finalized ourselves (immediate invoices and
+          // mid-month bills) are already marked applied inline right after
+          // finalization, so only subscription invoices (finalized by Stripe)
+          // consume benefits here on payment. Re-running for an immediate
+          // invoice would double-consume a partially-applied credit because
+          // paid carries the same starting/ending balance as finalized.
+          if (invoice.metadata?.type !== "immediate_invoice" && invoice.metadata?.type !== "mid_month") {
+            await markSkippedCreditsApplied(family.id, invoice);
+          }
           await sendReceipt(family, invoice, (await receiptPeriod(family.id, invoice)) ?? undefined);
           await prisma.immediateInvoice.updateMany({
             where: { stripeInvoiceId: invoice.id },
@@ -264,35 +273,6 @@ async function recordInvoiceLines(familyId: string, invoice: Stripe.Invoice) {
           stripeInvoiceId: invoice.id,
       },
     });
-  }
-}
-
-/** Consume only the portion of local credits that Stripe applied to this invoice. */
-async function markSkippedCreditsApplied(familyId: string, invoice: Stripe.Invoice) {
-  if (invoice.ending_balance == null) return;
-
-  let remainingCents = Math.max(0, invoice.ending_balance - invoice.starting_balance);
-  if (remainingCents === 0) return;
-
-  const rows = await prisma.adjustment.findMany({
-    where: { familyId, appliedToInvoice: null, stripeBalanceTransactionId: { not: null } },
-    orderBy: { createdAt: "asc" },
-  });
-
-  for (const row of rows) {
-    if (remainingCents <= 0) break;
-    const creditCents = Math.abs(Math.round((row.remainingAmount ?? row.amount) * 100));
-    if (creditCents === 0) continue;
-    const appliedCents = Math.min(creditCents, remainingCents);
-    const stillOpenCents = creditCents - appliedCents;
-    await prisma.adjustment.update({
-      where: { id: row.id },
-      data: {
-        remainingAmount: -stillOpenCents / 100,
-        appliedToInvoice: stillOpenCents === 0 ? invoice.id : null,
-      },
-    });
-    remainingCents -= appliedCents;
   }
 }
 

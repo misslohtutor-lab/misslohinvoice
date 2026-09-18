@@ -4,7 +4,7 @@ import { BILLING_CURRENCY, BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import { computeFamilyMonth, computeFamilyRange, round2, type StudentMonthLine } from "@/lib/scheduling";
 import { businessDateParts, businessDateTime, businessMonthRange, currentBusinessMonthRange, formatBusinessDate, formatBusinessTime, monthPeriodLabel, nextBusinessMonth } from "@/lib/time";
 import { checkoutReturnUrl } from "@/lib/checkout";
-import { applySkippedCreditsToStripe, noticeAmounts } from "@/lib/credits";
+import { applySkippedCreditsToStripe, noticeAmounts, markSkippedCreditsApplied } from "@/lib/credits";
 import { layout, esc } from "@/lib/email";
 import { money } from "@/lib/ui";
 
@@ -502,8 +502,13 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     });
   }
 
-  // Finalize and send the invoice email.
+  // Finalize and send the invoice email. Finalizing is when Stripe consumes
+  // the customer's credit balance, so mark the local credits it used as applied
+  // (idempotent; the webhook also does this). Without this, a credit consumed
+  // by an open, unpaid invoice would look unapplied and get re-counted on the
+  // next month's bill.
   const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+  await markSkippedCreditsApplied(family.id, finalized);
   await stripe.invoices.sendInvoice(invoice.id);
 
   // Record the sent invoice email so it appears in the admin Emails tab. The

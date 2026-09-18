@@ -3,6 +3,49 @@ import { getStripe } from "@/lib/stripe";
 import { BILLING_CURRENCY } from "@/lib/currency";
 import { round2 } from "@/lib/scheduling";
 
+/**
+ * Consume only the portion of local credits that Stripe applied to an invoice.
+ *
+ * Credits are handed to Stripe as the customer's balance when an invoice is
+ * about to be created (see applySkippedCreditsToStripe), and Stripe deducts
+ * that balance when the invoice is finalized — before it is paid. If we only
+ * marked credits applied on payment, a credit consumed by an open, unpaid
+ * invoice would still look unapplied locally and get re-counted on the next
+ * month's invoice. So this runs at finalization too, which is idempotent (rows
+ * already fully applied to an invoice are skipped next time).
+ */
+export async function markSkippedCreditsApplied(
+  familyId: string,
+  invoice: { id: string; starting_balance?: number | null; ending_balance?: number | null }
+) {
+  if (invoice.ending_balance == null) return;
+
+  const startingBalance = invoice.starting_balance ?? 0;
+  let remainingCents = Math.max(0, invoice.ending_balance - startingBalance);
+  if (remainingCents === 0) return;
+
+  const rows = await prisma.adjustment.findMany({
+    where: { familyId, appliedToInvoice: null, stripeBalanceTransactionId: { not: null } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  for (const row of rows) {
+    if (remainingCents <= 0) break;
+    const creditCents = Math.abs(Math.round((row.remainingAmount ?? row.amount) * 100));
+    if (creditCents === 0) continue;
+    const appliedCents = Math.min(creditCents, remainingCents);
+    const stillOpenCents = creditCents - appliedCents;
+    await prisma.adjustment.update({
+      where: { id: row.id },
+      data: {
+        remainingAmount: -stillOpenCents / 100,
+        appliedToInvoice: stillOpenCents === 0 ? invoice.id : null,
+      },
+    });
+    remainingCents -= appliedCents;
+  }
+}
+
 export async function getUnappliedCreditAmount(familyId: string): Promise<number> {
   const rows = await prisma.adjustment.findMany({
     where: { familyId, appliedToInvoice: null },

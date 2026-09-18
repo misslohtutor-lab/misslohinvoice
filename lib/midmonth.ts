@@ -5,7 +5,7 @@ import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import { computeFamilyRange, round2 } from "@/lib/scheduling";
 import { currentBusinessMonthRange, monthPeriodKey, monthPeriodLabel } from "@/lib/time";
 import { sendMidMonthChargeNotice, type NoticeLesson } from "@/lib/email-templates";
-import { applySkippedCreditsToStripe, noticeAmounts } from "@/lib/credits";
+import { applySkippedCreditsToStripe, noticeAmounts, markSkippedCreditsApplied } from "@/lib/credits";
 import { ensurePriceForStudent } from "@/lib/subscriptions";
 
 /** Hours between sending the mid-month billing email and charging the card. */
@@ -163,6 +163,7 @@ export async function billCurrentMonthNow(
       customer: family.stripeCustomerId,
       auto_advance: false,
       collection_method: "charge_automatically",
+      metadata: { type: "mid_month" },
     },
     opts?.idempotencyKey ? { idempotencyKey: `${opts.idempotencyKey}:invoice` } : undefined
   );
@@ -207,7 +208,12 @@ export async function billCurrentMonthNow(
         );
       }
     }
-    await stripe.invoices.finalizeInvoice(invoice.id);
+    const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+    // Finalizing is when Stripe consumes the customer's credit balance, so mark
+    // the local credits it used as applied immediately (the webhook skips these
+    // via metadata.type=mid_month). Otherwise a credit used by this invoice would
+    // look unapplied until payment and get re-counted on the next bill.
+    await markSkippedCreditsApplied(family.id, finalized);
   } else if (invoice.status !== "open") {
     throw new Error(`Invoice ${invoice.id} is ${invoice.status ?? "unavailable"}`);
   }

@@ -60,6 +60,8 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
     orderBy: { date: "asc" },
   });
   const nextMonth = await computeFamilyMonth(id, year, month);
+  // Credits not yet marked applied to an invoiced month are the ones that will
+  // offset the next bill (mirrors getUnappliedCreditAmount).
   const credits = family.adjustments
     .filter((a) => a.appliedToInvoice === null)
     .reduce((acc, a) => acc + (a.remainingAmount ?? a.amount), 0);
@@ -367,15 +369,23 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
         {family.adjustments.length > 0 && (
           <div className="mt-4 border-t border-zinc-100 pt-3">
             <h3 className="mb-1 text-xs font-medium uppercase text-zinc-400">
-              Missed-lesson credits · total {money(Math.abs(credits))}
+              Missed-lesson credits · available {money(Math.abs(credits))}
             </h3>
             <ul className="space-y-1 text-sm">
-              {family.adjustments.map((a) => (
-                <li key={a.id} className="flex justify-between text-zinc-600">
-                  <span>{a.reason}</span>
-                  <span className={a.amount < 0 ? "text-emerald-700" : "text-zinc-700"}>{money(a.amount)}</span>
-                </li>
-              ))}
+              {family.adjustments.map((a) => {
+                const sentStripe = a.stripeBalanceTransactionId !== null;
+                const applied = a.appliedToInvoice !== null;
+                return (
+                  <li key={a.id} className="flex items-center justify-between gap-2 text-zinc-600">
+                    <span>
+                      {a.reason}
+                      {applied && <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">applied to invoice</span>}
+                      {!applied && sentStripe && <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">applied via Stripe</span>}
+                    </span>
+                    <span className={a.amount < 0 ? "text-emerald-700" : "text-zinc-700"}>{money(a.amount)}</span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
