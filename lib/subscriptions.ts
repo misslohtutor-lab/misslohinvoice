@@ -5,7 +5,7 @@ import { computeFamilyMonth, computeFamilyRange, round2, type StudentMonthLine }
 import { businessDateParts, businessDateTime, businessMonthRange, currentBusinessMonthRange, formatBusinessDate, formatBusinessTime, monthPeriodLabel, nextBusinessMonth } from "@/lib/time";
 import { checkoutReturnUrl } from "@/lib/checkout";
 import { applySkippedCreditsToStripe, noticeAmounts, markSkippedCreditsApplied } from "@/lib/credits";
-import { layout, esc } from "@/lib/email";
+import { layout, esc, sendEmailAndRecord } from "@/lib/email";
 import { money } from "@/lib/ui";
 
 export type PriceKind = "recurring" | "one-time";
@@ -370,10 +370,11 @@ export async function computeImmediateInvoicePreview(familyId: string): Promise<
 
 /**
  * Render the invoice email as a branded HTML snapshot, mirroring the admin
- * preview so the Emails tab shows what the family was sent. (The actual send
- * is done by Stripe via `stripe.invoices.sendInvoice`.)
+ * preview so the Emails tab shows what the family was sent. The message is
+ * delivered from here via SMTP so the payment CTA can carry both a
+ * <Pay Invoice> button and a backup payment link.
  */
-function immediateInvoiceHtml(preview: ImmediateInvoicePreview): string {
+function immediateInvoiceHtml(preview: ImmediateInvoicePreview, invoiceUrl: string): string {
   const rows = preview.lines
     .filter((l) => l.hours > 0)
     .map(
@@ -425,11 +426,13 @@ function immediateInvoiceHtml(preview: ImmediateInvoicePreview): string {
       <tbody>${slotRows}</tbody>
     </table>
     <div style="background:#f8f8f8;border-left:3px solid #e5e5e5;border-radius:6px;padding:12px 16px;margin-top:16px">
-      <p style="margin:0;color:#555;font-size:13px;line-height:1.6">
-        Stripe emails this invoice with a <strong>Pay invoice</strong> button. Once paid,
-        the family is automatically subscribed so future months bill on the 1st.
-      </p>
+      <p style="margin:0 0 4px;color:#555;font-size:13px;line-height:1.6">Pay by credit card using the button below:</p>
     </div>
+    <div style="text-align:center;margin-top:8px">
+      <a href="${esc(invoiceUrl)}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Pay invoice</a>
+    </div>
+    <p style="color:#888;font-size:13px">If the button doesn't work, paste this link into your browser:<br>${esc(invoiceUrl)}</p>
+    <p style="color:#555;font-size:13px">Once paid, the family is automatically subscribed so future months bill on the 1st.</p>
   `);
 }
 
@@ -502,31 +505,35 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
     });
   }
 
-  // Finalize and send the invoice email. Finalizing is when Stripe consumes
-  // the customer's credit balance, so mark the local credits it used as applied
-  // (idempotent; the webhook also does this). Without this, a credit consumed
-  // by an open, unpaid invoice would look unapplied and get re-counted on the
-  // next month's bill.
+  // Finalize the invoice. Finalizing is when Stripe consumes the customer's
+  // credit balance, so mark the local credits it used as applied (idempotent;
+  // the webhook also does this). Without this, a credit consumed by an open,
+  // unpaid invoice would look unapplied and get re-counted on the next
+  // month's bill.
   const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
   await markSkippedCreditsApplied(family.id, finalized);
-  await stripe.invoices.sendInvoice(invoice.id);
 
-  // Record the sent invoice email so it appears in the admin Emails tab. The
-  // send itself is done by Stripe, so the row is marked as sent.
-  try {
-    await prisma.message.create({
-      data: {
-        familyId: family.id,
-        to: family.email,
-        type: "IMMEDIATE_INVOICE",
-        subject: `Your invoice for ${preview.periodLabel}`,
-        html: immediateInvoiceHtml(preview),
-        sent: true,
-      },
-    });
-  } catch (err) {
-    // Logging a sent email must never fail the invoice send itself.
-    console.error("[subscriptions] could not record immediate-invoice email:", err);
+  // Email the invoice ourselves so the payment CTA carries both the Pay
+  // Invoice button and a backup payment link (Stripe's own send_invoice email
+  // only renders the button). If SMTP is unavailable, fall back to Stripe's
+  // email so the invoice still reaches the family.
+  const invoiceUrl = finalized.hosted_invoice_url ?? `https://invoice.stripe.com/${invoice.id}`;
+  const delivery = await sendEmailAndRecord({
+    familyId: family.id,
+    to: family.email,
+    type: "IMMEDIATE_INVOICE",
+    subject: `Your invoice for ${preview.periodLabel}`,
+    html: immediateInvoiceHtml(preview, invoiceUrl),
+  });
+  if (!delivery.sent) {
+    console.error(
+      `[subscriptions] could not email immediate invoice ${invoice.id} (${delivery.error ?? "unknown error"}); falling back to Stripe email`
+    );
+    try {
+      await stripe.invoices.sendInvoice(invoice.id);
+    } catch (err) {
+      console.error("[subscriptions] Stripe sendInvoice fallback failed:", err);
+    }
   }
 
   // Record the sent invoice so the guard above catches repeats. Written last so
@@ -543,7 +550,7 @@ export async function sendImmediateInvoice(familyId: string): Promise<{
 
   return {
     invoiceId: invoice.id,
-    invoiceUrl: finalized.hosted_invoice_url ?? `https://invoice.stripe.com/${invoice.id}`,
+    invoiceUrl,
     amount: preview.netAmount,
   };
 }

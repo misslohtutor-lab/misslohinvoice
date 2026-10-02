@@ -32,6 +32,11 @@ export async function sendReceipt(
   invoice: Stripe.Invoice,
   period?: { from: Date; to: Date }
 ) {
+  // A receipt for $0 is noise — it happens on trial/initial invoices and on
+  // invoices fully paid by a credit balance. Don't reserve or email one.
+  if ((invoice.amount_paid ?? 0) <= 0) {
+    return { sent: false, error: "Nothing to receipt (zero-value invoice)" };
+  }
   const message = await reserve(family, "RECEIPT", "Monthly receipt", `receipt:${invoice.id}`);
   if (!message) return { sent: false, error: "Receipt already sent" };
 
@@ -66,15 +71,22 @@ export async function sendReceipt(
   return res;
 }
 
-/** Alert a family that a card charge failed (Stripe auto-retries). */
-export async function sendPaymentFailure(family: Family, invoice: Stripe.Invoice) {
+/** Alert a family that a card charge failed (Stripe auto-retries). When a card
+ * setup link is provided, include it so the family can save a new payment
+ * method; doing so also settles the failed invoice. */
+export async function sendPaymentFailure(family: Family, invoice: Stripe.Invoice, updateUrl?: string | null) {
   const message = await reserve(family, "PAYMENT_FAILED", "Payment failed", `payment-failed:${invoice.id}`);
   if (!message) return { sent: false, error: "Payment failure notice already sent" };
 
+  const update = updateUrl
+    ? `<p><a href="${esc(updateUrl)}" style="display:inline-block;background:#111;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none">Update payment method</a></p>
+       <p style="color:#888;font-size:13px">If the button doesn't work, paste this link into your browser:<br>${esc(updateUrl)}</p>`
+    : "";
   const html = layout("Action needed: payment failed", `
     <p>We attempted to charge your card for <strong>${cad(invoice.total)}</strong> but the payment was declined.</p>
-    <p>Stripe will automatically retry the charge. Please contact us to update your payment method
-    so your tutoring continues without interruption.</p>
+    <p>Stripe will keep retrying automatically. Please update your payment method so your tutoring continues
+    without interruption. This takes a minute and does not charge anything today — it only saves your card for billing.</p>
+    ${update}
   `);
   const res = await sendEmail({ to: family.email, subject: "Your payment was declined", html });
   await finish(message.id, res.sent, html);

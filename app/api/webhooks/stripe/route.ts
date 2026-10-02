@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
-import { attachSubscriptionToFamily, createSubscriptionAfterSetup } from "@/lib/subscriptions";
+import { attachSubscriptionToFamily, createOnboardingCheckout, createSubscriptionAfterSetup } from "@/lib/subscriptions";
 import { receiptPeriod } from "@/lib/midmonth";
 import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
-import { sendReceipt, sendPaymentFailure, sendOnboardingConfirmation } from "@/lib/email-templates";
+import { sendReceipt, sendPaymentFailure, sendOnboarding, sendOnboardingConfirmation } from "@/lib/email-templates";
+import { guideUrl } from "@/lib/checkout";
 import { markSkippedCreditsApplied } from "@/lib/credits";
 
 export const runtime = "nodejs";
@@ -124,27 +125,45 @@ export async function POST(req: NextRequest) {
                 if (method.card?.last4) {
                   await prisma.family.update({ where: { id: family.id }, data: { cardLast4: method.card.last4 } });
                 }
-              }
 
-              // If the immediate invoice prepaid the next month (no current-month
-              // lessons), the subscription must not bill that month again — start
-              // its trial the month after, so the first invoice lands safely there.
-              let targetMonth: { year: number; month: number } | undefined;
-              const prepaidRaw = invoice.metadata?.prepaidMonth;
-              if (typeof prepaidRaw === "string") {
-                const [y, m] = prepaidRaw.split("-").map(Number);
-                if (Number.isFinite(y) && Number.isFinite(m)) {
-                  const after = new Date(Date.UTC(y, m, 1)); // m is 1-based
-                  targetMonth = { year: after.getUTCFullYear(), month: after.getUTCMonth() };
+                // If the immediate invoice prepaid the next month (no current-month
+                // lessons), the subscription must not bill that month again — start
+                // its trial the month after, so the first invoice lands safely there.
+                let targetMonth: { year: number; month: number } | undefined;
+                const prepaidRaw = invoice.metadata?.prepaidMonth;
+                if (typeof prepaidRaw === "string") {
+                  const [y, m] = prepaidRaw.split("-").map(Number);
+                  if (Number.isFinite(y) && Number.isFinite(m)) {
+                    const after = new Date(Date.UTC(y, m, 1)); // m is 1-based
+                    targetMonth = { year: after.getUTCFullYear(), month: after.getUTCMonth() };
+                  }
+                }
+
+                await createSubscriptionAfterSetup(
+                  family.id,
+                  invoice.customer,
+                  paymentMethod,
+                  targetMonth ? { targetMonth } : undefined
+                );
+              } else {
+                // The invoice was paid without a reusable card, so a
+                // charge_automatically subscription would fail on the 1st (no
+                // payment method to charge). Send the family the onboarding
+                // link to save a card instead; the setup-checkout webhook (or
+                // the nightly sweep) creates the subscription once one exists.
+                console.error(
+                  "[stripe webhook] immediate invoice " +
+                    invoice.id +
+                    " paid with no reusable card — sending onboarding link to " +
+                    family.id
+                );
+                try {
+                  const url = await createOnboardingCheckout(family.id);
+                  await sendOnboarding(family, url, guideUrl());
+                } catch (err) {
+                  console.error("[stripe webhook] failed to send card-setup link after immediate invoice:", err);
                 }
               }
-
-              await createSubscriptionAfterSetup(
-                family.id,
-                invoice.customer,
-                paymentMethod ?? null,
-                targetMonth ? { targetMonth } : undefined
-              );
             } catch (err) {
               console.error("[stripe webhook] auto-subscribe after immediate invoice failed:", err);
             }
@@ -163,7 +182,16 @@ export async function POST(req: NextRequest) {
             await syncStatus(family.id, invoice.subscription);
             await prisma.family.update({ where: { id: family.id }, data: { subscriptionStatus: "past_due" } });
           }
-          await sendPaymentFailure(family, invoice);
+          // Include a $0 card-setup link so the family can update their payment
+          // method themselves; completing it attaches the card and settles the
+          // open invoice (see handleSetupOnboarding / settleOpenInvoices).
+          let updateUrl: string | null = null;
+          try {
+            updateUrl = await createOnboardingCheckout(family.id);
+          } catch (err) {
+            console.error("[stripe webhook] could not create card-update link for failed payment:", err);
+          }
+          await sendPaymentFailure(family, invoice, updateUrl);
         }
         break;
       }
@@ -192,6 +220,11 @@ export async function POST(req: NextRequest) {
  * After a $0 setup-mode onboarding checkout, save the card as the customer's
  * default payment method and create the monthly subscription (trial until the
  * 1st), so the family's first recurring charge lands on a normal billing day.
+ *
+ * When the family already has a subscription (e.g. they're re-adding/replacing
+ * a card after a charge failed) the newly saved card is attached to the
+ * subscription and any open invoice is settled immediately, instead of the
+ * family waiting for Stripe's next automatic retry.
  */
 async function handleSetupOnboarding(familyId: string, session: Stripe.Checkout.Session) {
   const stripe = getStripe();
@@ -203,6 +236,9 @@ async function handleSetupOnboarding(familyId: string, session: Stripe.Checkout.
     if (si.payment_method) paymentMethod = String(si.payment_method);
   }
 
+  const family = await prisma.family.findUnique({ where: { id: familyId } });
+  if (!family) return;
+
   if (paymentMethod) {
     await stripe.customers.update(customerId, {
       invoice_settings: { default_payment_method: paymentMethod },
@@ -213,7 +249,36 @@ async function handleSetupOnboarding(familyId: string, session: Stripe.Checkout.
     }
   }
 
-  await createSubscriptionAfterSetup(familyId, customerId, paymentMethod);
+  if (family.subscriptionId) {
+    if (paymentMethod) {
+      await stripe.subscriptions.update(family.subscriptionId, {
+        default_payment_method: paymentMethod,
+      });
+    }
+    await settleOpenInvoices(family.stripeCustomerId);
+  } else {
+    await createSubscriptionAfterSetup(familyId, customerId, paymentMethod);
+  }
+}
+
+/**
+ * Pay every open invoice for the customer right after they've saved a card, so
+ * a past-due bill (e.g. one stuck failing because the subscription had no
+ * payment method) is collected without waiting for Stripe's next retry. Errors
+ * are logged and skipped — the card is on file, so a later automatic retry can
+ * still succeed.
+ */
+async function settleOpenInvoices(customerId: string | null) {
+  if (!customerId) return;
+  const stripe = getStripe();
+  const open = await stripe.invoices.list({ customer: customerId, status: "open", limit: 10 });
+  for (const invoice of open.data) {
+    try {
+      await stripe.invoices.pay(invoice.id, { off_session: true });
+    } catch (err) {
+      console.error("[stripe webhook] failed to pay open invoice " + invoice.id + " after card update:", err);
+    }
+  }
 }
 
 async function updateCard(familyId: string, subscriptionId: string) {

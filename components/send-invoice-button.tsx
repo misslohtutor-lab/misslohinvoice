@@ -170,8 +170,8 @@ export function SendInvoiceButton({ familyId }: { familyId: string }) {
                     </tbody>
                   </table>
                   <p className="mt-3 text-xs text-zinc-500">
-                    Stripe emails this with a <strong>Pay invoice</strong> button. Once paid, the family is
-                    automatically subscribed so future months bill on the 1st.
+                    The email includes a <strong>Pay Invoice</strong> button and a backup payment link. Once
+                    paid, the family is automatically subscribed so future months bill on the 1st.
                   </p>
                 </div>
 

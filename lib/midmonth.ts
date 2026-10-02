@@ -47,15 +47,26 @@ export async function noticeLessonsForPeriod(
  * Period to display on a receipt. One-off mid-month bills (no subscription)
  * have Stripe periods pinned to invoice creation, so they cover the span that
  * was actually billed: the first charged lesson → the last day of the month.
- * For subscription invoices, uses the Stripe subscription's billing period
- * which correctly reflects the covered timeframe (the invoice's own period
- * can be wrong for trial/initial invoices where start == end).
+ * For subscription invoices, uses the invoice's own billing period, which
+ * reflects exactly what the line items cover. The subscription's current
+ * period is NOT reliable: Stripe advances it to the next cycle once an invoice
+ * is paid, so reading it at webhook time would show a later period than the
+ * one actually charged. Only for trial/initial invoices — where Stripe pins the
+ * period to creation so start == end — fall back to the subscription's period
+ * (those are $0 invoices, which sendReceipt skips anyway).
  */
 export async function receiptPeriod(
   familyId: string,
   invoice: Stripe.Invoice
 ): Promise<{ from: Date; to: Date } | null> {
   if (typeof invoice.subscription === "string") {
+    if (invoice.period_start && invoice.period_end && invoice.period_end > invoice.period_start) {
+      return {
+        from: new Date(invoice.period_start * 1000),
+        to: new Date(invoice.period_end * 1000 - 1),
+      };
+    }
+
     const sub = await getStripe().subscriptions.retrieve(invoice.subscription);
     if (sub.current_period_start && sub.current_period_end) {
       return {
@@ -64,6 +75,18 @@ export async function receiptPeriod(
       };
     }
     return null;
+  }
+
+  // Immediate invoices (send_invoice, paid by link) record the billed period
+  // locally at send time — Stripe's own period is pinned to invoice creation.
+  const immediate = await prisma.immediateInvoice.findFirst({
+    where: { stripeInvoiceId: invoice.id },
+  });
+  if (immediate) {
+    return {
+      from: immediate.periodStart,
+      to: new Date(immediate.periodEnd.getTime() - 1),
+    };
   }
 
   const pending = await prisma.pendingCharge.findFirst({
