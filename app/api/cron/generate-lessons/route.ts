@@ -5,7 +5,7 @@ import { generateAllLessons } from "@/lib/scheduling";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const WEEKS_AHEAD = 10;
+const WEEKS_AHEAD = 16;
 
 /**
  * Top up every active student's lesson list so a rolling `WEEKS_AHEAD` window

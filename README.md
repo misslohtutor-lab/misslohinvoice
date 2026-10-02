@@ -40,7 +40,7 @@ Jobs run as Vercel Cron endpoints (see `vercel.json`):
 | `billing` | 1st of month 08:00 | syncs each subscription's line-item quantities to the upcoming month's scheduled hours |
 | `reminders` | daily 08:00 | emails lesson reminders for the next 48h |
 | `midmonth-billing` | daily 10:00 | sweeps queued mid-month charges whose 24h notice window has elapsed |
-| `generate-lessons` | daily 07:00 | tops up every active student's lesson list to a rolling 10-week horizon |
+| `generate-lessons` | daily 07:00 | tops up every active student's lesson list to a rolling 16-week horizon |
 
 Endpoints require `Authorization: Bearer <CRON_SECRET>` (or `?secret=`, as wired in `vercel.json`). Set `CRON_SECRET` in the Vercel project environment.
 
