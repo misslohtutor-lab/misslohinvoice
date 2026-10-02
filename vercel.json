@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/midmonth-billing?secret=${CRON_SECRET}",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/generate-lessons?secret=${CRON_SECRET}",
+      "schedule": "0 7 * * *"
     }
   ]
 }
