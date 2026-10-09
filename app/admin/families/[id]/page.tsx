@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { addStudent, addWeeklySlot, deleteStudent, deleteWeeklySlot, deleteFamily, updateFamilyEmail } from "@/lib/admin-actions";
 import { computeFamilyMonth } from "@/lib/scheduling";
-import { businessMonthRange, currentBusinessMonthRange, nextBusinessMonth } from "@/lib/time";
+import { businessMonthRange, currentBusinessMonthRange, nextBusinessMonth, businessDateInput, businessTimeInput } from "@/lib/time";
 import { money, formatDate, formatTime, badge, QUARTER_HOUR_TIMES } from "@/lib/ui";
 import { OnboardingButton } from "@/components/onboarding-button";
 import { CreateSubscriptionButton } from "@/components/create-subscription-button";
@@ -11,6 +11,7 @@ import { GenerateLessonsButton } from "@/components/generate-lessons-button";
 import { FamilyTimezoneForm } from "@/components/family-timezone-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { MarkLessonButton } from "@/components/mark-lesson-button";
+import { EditLessonButton } from "@/components/edit-lesson-button";
 import { DayOfWeek } from "@/generated/prisma/enums";
 
 const DAYS = Object.values(DayOfWeek);
@@ -292,37 +293,44 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
                           {l.status === "MISSED_HALF" && <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">missed (half)</span>}
                           {l.status === "SKIPPED" && <span className="ml-1 rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600">skipped</span>}
                         </span>
-                        {l.status === "SCHEDULED" ? (
-                          <span className="flex items-center gap-2">
+                        <span className="flex items-center gap-2">
+                          {l.status === "SCHEDULED" ? (
+                            <>
+                              <MarkLessonButton
+                                lessonId={l.id}
+                                status="SKIPPED"
+                                label="Skip"
+                                confirmText={`Skip the ${formatDate(l.date)} lesson (remove from calendar)? No credit is given.`}
+                              />
+                              <MarkLessonButton
+                                lessonId={l.id}
+                                status="MISSED"
+                                label="Miss"
+                                confirmText={`Mark the ${formatDate(l.date)} lesson as missed (illness)? The family gets credit for the next bill.`}
+                              />
+                              <MarkLessonButton
+                                lessonId={l.id}
+                                status="MISSED_HALF"
+                                label="Miss half"
+                                confirmText={`Mark the ${formatDate(l.date)} lesson as half missed (student attended part)? The family gets half credit for the next bill.`}
+                              />
+                            </>
+                          ) : l.status === "MISSED" || l.status === "MISSED_HALF" || l.status === "SKIPPED" ? (
                             <MarkLessonButton
                               lessonId={l.id}
-                              status="SKIPPED"
-                              label="Skip"
-                              confirmText={`Skip the ${formatDate(l.date)} lesson (remove from calendar)? No credit is given.`}
+                              status="SCHEDULED"
+                              label="Restore"
+                              confirmText="Restore this lesson to the schedule?"
                             />
-                            <MarkLessonButton
-                              lessonId={l.id}
-                              status="MISSED"
-                              label="Miss"
-                              confirmText={`Mark the ${formatDate(l.date)} lesson as missed (illness)? The family gets credit for the next bill.`}
-                            />
-                            <MarkLessonButton
-                              lessonId={l.id}
-                              status="MISSED_HALF"
-                              label="Miss half"
-                              confirmText={`Mark the ${formatDate(l.date)} lesson as half missed (student attended part)? The family gets half credit for the next bill.`}
-                            />
-                          </span>
-                        ) : l.status === "MISSED" || l.status === "MISSED_HALF" || l.status === "SKIPPED" ? (
-                          <MarkLessonButton
+                          ) : (
+                            <span className="text-xs text-zinc-400">{l.status}</span>
+                          )}
+                          <EditLessonButton
                             lessonId={l.id}
-                            status="SCHEDULED"
-                            label="Restore"
-                            confirmText="Restore this lesson to the schedule?"
+                            dateStr={businessDateInput(l.date)}
+                            startStr={businessTimeInput(l.date)}
                           />
-                        ) : (
-                          <span className="text-xs text-zinc-400">{l.status}</span>
-                        )}
+                        </span>
                       </li>
                     ))}
                   </ul>

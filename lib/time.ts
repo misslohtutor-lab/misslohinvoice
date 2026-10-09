@@ -110,6 +110,18 @@ export function formatBusinessTime(date: Date, opts?: Intl.DateTimeFormatOptions
   }).format(date);
 }
 
+/** `YYYY-MM-DD` wall-clock date in the business timezone (for `<input type="date">`). */
+export function businessDateInput(date: Date): string {
+  const { year, month, day } = businessDateParts(date);
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** `HH:MM` 24-hour wall-clock time in the business timezone (for a quarter-hour `<select>`). */
+export function businessTimeInput(date: Date): string {
+  const parts = formatParts(date);
+  return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
+}
+
 /** Human label for a year/month, e.g. `January 2026`. */
 export function monthPeriodLabel(year: number, month: number): string {
   return new Date(year, month).toLocaleString("en-US", { month: "long", year: "numeric" });

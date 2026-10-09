@@ -13,7 +13,7 @@ import { createOnboardingCheckout, createSubscriptionAfterSetup, computeImmediat
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
 import { sendOnboarding } from "@/lib/email-templates";
-import { formatBusinessDate, formatBusinessTime, nextBusinessMonth, BUSINESS_TIME_ZONE } from "@/lib/time";
+import { formatBusinessDate, formatBusinessTime, nextBusinessMonth, BUSINESS_TIME_ZONE, businessDateTime } from "@/lib/time";
 import { getStripe } from "@/lib/stripe";
 
 function logActionError(action: string, err: unknown) {
@@ -313,6 +313,48 @@ export async function deleteFamily(formData: FormData) {
 export type MarkLessonResult =
   | { ok: true }
   | { ok: false; error: string };
+
+/**
+ * Move a single lesson to a different date and/or start time. The duration is
+ * preserved (endTime shifts with the new start), so the billable hours for the
+ * lesson are unchanged; only which period it falls in can change.
+ */
+export async function updateLesson(formData: FormData): Promise<MarkLessonResult> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const dateStr = String(formData.get("date") ?? "");
+  const startTime = String(formData.get("startTime") ?? "");
+  try {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+    if (!match) return { ok: false, error: "Please choose a valid date." };
+    const startMinutes = timeToMinutes(startTime);
+    if (startMinutes == null) {
+      return { ok: false, error: "Times must be on a quarter hour (e.g. 16:00, 16:15)." };
+    }
+
+    const lesson = await prisma.lesson.findUniqueOrThrow({
+      where: { id },
+      include: { student: true },
+    });
+
+    const start = businessDateTime(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Math.floor(startMinutes / 60),
+      startMinutes % 60
+    );
+    const end = new Date(start.getTime() + lesson.durationHours * 60 * 60 * 1000);
+
+    await prisma.lesson.update({ where: { id }, data: { date: start, endTime: end } });
+
+    revalidatePath(`/admin/families/${lesson.student.familyId}`);
+    revalidatePath("/admin/schedule");
+    return { ok: true };
+  } catch (err) {
+    return logActionError("updateLesson", err);
+  }
+}
 
 /**
  * Set a lesson's status. Marking it MISSED (student no-show) records a negative
