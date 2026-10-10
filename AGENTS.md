@@ -7,3 +7,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Git remotes
+
+This repo's `origin` (`misslohtutor-lab/misslohinvoice`) is owned by the `misslohtutor-lab` GitHub
+account. The machine has two gh accounts configured and defaults to `xxgosokxx-maker`, which is not a
+collaborator — pushing with it fails with HTTP 403. Before pushing, switch accounts:
+
+```bash
+gh auth switch --user misslohtutor-lab
+git push origin main
+```
