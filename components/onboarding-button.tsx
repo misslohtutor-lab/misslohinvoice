@@ -14,7 +14,7 @@ export function OnboardingButton({ familyId }: { familyId: string }) {
   return (
     <form action={action}>
       <input type="hidden" name="familyId" value={familyId} />
-      <button disabled={pending} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50">
+      <button disabled={pending} className="btn btn-success">
         {pending ? "Creating…" : "Send onboarding link"}
       </button>
       {state?.ok && state.emailSent && (
@@ -25,7 +25,7 @@ export function OnboardingButton({ familyId }: { familyId: string }) {
       )}
       {state?.ok && state.checkoutUrl && (
         <a href={state.checkoutUrl} target="_blank" rel="noopener noreferrer"
-           className="ml-3 inline-block rounded-lg bg-zinc-900 px-3 py-2 text-sm text-white hover:bg-zinc-700">
+           className="btn btn-secondary">
           Open checkout →
         </a>
       )}

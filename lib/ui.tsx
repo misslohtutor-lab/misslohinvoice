@@ -38,24 +38,33 @@ export function formatTime(d: Date | string | undefined | null): string {
   return new Date(d).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: BUSINESS_TIME_ZONE });
 }
 
+const BADGE_TONES: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
+  active: "success",
+  trialing: "info",
+  past_due: "warning",
+  incomplete: "warning",
+  canceled: "neutral",
+  unpaid: "danger",
+  SUCCESS: "success",
+  FAILED: "danger",
+  PENDING: "warning",
+  PROCESSING: "info",
+  CHARGED: "success",
+  due: "warning",
+  next: "neutral",
+  COMPLETED: "info",
+  SCHEDULED: "neutral",
+  CANCELLED: "danger",
+};
+
+const TONE_CLASSES: Record<string, string> = {
+  success: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20",
+  warning: "bg-amber-50 text-amber-700 ring-1 ring-amber-600/20",
+  danger: "bg-red-50 text-red-700 ring-1 ring-red-600/20",
+  info: "bg-sky-50 text-sky-700 ring-1 ring-sky-600/20",
+  neutral: "bg-slate-100 text-slate-600 ring-1 ring-slate-500/20",
+};
+
 export function badge(status: string | undefined | null) {
-  const map: Record<string, string> = {
-    active: "bg-emerald-100 text-emerald-700",
-    trialing: "bg-sky-100 text-sky-700",
-    past_due: "bg-amber-100 text-amber-700",
-    incomplete: "bg-amber-100 text-amber-700",
-    canceled: "bg-zinc-200 text-zinc-600",
-    unpaid: "bg-red-100 text-red-700",
-    SUCCESS: "bg-emerald-100 text-emerald-700",
-    FAILED: "bg-red-100 text-red-700",
-    PENDING: "bg-amber-100 text-amber-700",
-    PROCESSING: "bg-sky-100 text-sky-700",
-    CHARGED: "bg-emerald-100 text-emerald-700",
-    due: "bg-amber-100 text-amber-700",
-    next: "bg-zinc-200 text-zinc-600",
-    COMPLETED: "bg-sky-100 text-sky-700",
-    SCHEDULED: "bg-zinc-100 text-zinc-600",
-    CANCELLED: "bg-red-100 text-red-700",
-  };
-  return map[status ?? ""] ?? "bg-zinc-100 text-zinc-600";
+  return TONE_CLASSES[BADGE_TONES[status ?? ""] ?? "neutral"];
 }

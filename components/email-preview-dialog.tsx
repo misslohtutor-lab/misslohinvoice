@@ -31,18 +31,19 @@ export default function EmailPreviewDialog({
     <dialog
       ref={dialogRef}
       onClose={onClose}
-      className="backdrop:bg-black/40 rounded-xl border border-zinc-200 bg-white p-0 shadow-xl max-w-3xl w-full"
+      className="backdrop:bg-slate-900/40 rounded-2xl border border-border bg-surface p-0 shadow-pop max-w-3xl w-full"
     >
-      <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
           <h2 className="font-semibold">{subject}</h2>
-          <p className="text-xs text-zinc-500">To: {to}</p>
+          <p className="text-xs text-muted-foreground">To: {to}</p>
         </div>
         <button
           onClick={() => dialogRef.current?.close()}
-          className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+          className="btn btn-ghost p-2"
+          aria-label="Close"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 6 6 18" /><path d="m6 6 12 12" />
           </svg>
         </button>
@@ -56,7 +57,7 @@ export default function EmailPreviewDialog({
             title="Email preview"
           />
         ) : (
-          <div className="px-4 py-8 text-center text-zinc-400">
+          <div className="px-4 py-8 text-center text-muted-foreground">
             No content available (sent before HTML storage was added).
           </div>
         )}

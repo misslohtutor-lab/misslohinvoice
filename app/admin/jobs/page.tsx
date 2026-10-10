@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { badge, formatDate, formatTime } from "@/lib/ui";
+import { PageHeader } from "@/components/ui";
 import { businessDateParts, businessDateTime, monthPeriodKey } from "@/lib/time";
 
 export const revalidate = 0;
@@ -100,26 +101,29 @@ export default async function JobsPage() {
   ];
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold">Scheduled jobs</h1>
-        <p className="text-sm text-zinc-500">
-          Jobs run every 30 minutes via cron and only fire when they are due and not yet done, so missed runs are
-          recovered automatically. Tracked in the <code className="rounded bg-zinc-100 px-1">ScheduledRun</code> table.
-        </p>
-      </div>
+    <>
+      <PageHeader
+        title="Scheduled jobs"
+        description={
+          <>
+            Jobs run every 30 minutes via cron and only fire when they are due and not yet done, so missed runs
+            are recovered automatically. Tracked in the{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">ScheduledRun</code> table.
+          </>
+        }
+      />
 
       <section className="grid gap-4 sm:grid-cols-3">
         {nextRuns.map((j) => (
-          <div key={j.name} className="rounded-xl border border-zinc-200 bg-white p-4">
-            <div className="flex items-center justify-between">
+          <div key={j.name} className="card p-4">
+            <div className="flex items-center justify-between gap-2">
               <span className="font-medium">{j.label}</span>
-              <span className={`rounded px-2 py-0.5 text-xs ${badge(j.status === "ran" ? "SUCCESS" : j.status === "due" ? "due" : "next")}`}>
+              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${badge(j.status === "ran" ? "SUCCESS" : j.status === "due" ? "due" : "next")}`}>
                 {j.status === "ran" ? "done" : j.status === "due" ? "due" : "scheduled"}
               </span>
             </div>
-            <p className="mt-1 text-xs text-zinc-500">{j.cadence}</p>
-            <p className="mt-2 text-sm text-zinc-800">
+            <p className="mt-1 text-xs text-muted-foreground">{j.cadence}</p>
+            <p className="mt-3 text-sm font-medium text-foreground">
               {j.status === "ran"
                 ? "Next: " + formatDate(j.next, { month: "short", day: "numeric", year: "numeric" })
                 : j.status === "due"
@@ -130,39 +134,41 @@ export default async function JobsPage() {
         ))}
       </section>
 
-      <section className="rounded-xl border border-zinc-200 bg-white">
-        <h2 className="border-b border-zinc-200 px-4 py-3 font-semibold">Past runs</h2>
+      <section className="card overflow-hidden">
+        <h2 className="border-b border-border px-5 py-4 font-semibold">Past runs</h2>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-200 text-left text-zinc-500">
-              <th className="px-4 py-2">Job</th>
-              <th className="px-4 py-2">Window</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Started</th>
-              <th className="px-4 py-2">Finished</th>
-              <th className="px-4 py-2">Detail</th>
+            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <th className="px-5 py-3">Job</th>
+              <th className="px-5 py-3">Window</th>
+              <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3">Started</th>
+              <th className="px-5 py-3">Finished</th>
+              <th className="px-5 py-3">Detail</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
+          <tbody className="divide-y divide-border">
             {runs.map((r) => (
-              <tr key={r.id}>
-                <td className="px-4 py-2 font-medium">{r.job}</td>
-                <td className="px-4 py-2 text-zinc-600">{r.windowKey}</td>
-                <td className="px-4 py-2">
-                  <span className={`inline-block rounded px-2 py-0.5 text-xs ${badge(r.status)}`}>{r.status}</span>
+              <tr key={r.id} className="transition-colors hover:bg-muted">
+                <td className="px-5 py-3 font-medium">{r.job}</td>
+                <td className="px-5 py-3 text-muted-foreground">{r.windowKey}</td>
+                <td className="px-5 py-3">
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${badge(r.status)}`}>
+                    {r.status}
+                  </span>
                 </td>
-                <td className="px-4 py-2 text-zinc-600">
+                <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">
                   {formatDate(r.startedAt)} {formatTime(r.startedAt)}
                 </td>
-                <td className="px-4 py-2 text-zinc-600">
+                <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">
                   {r.finishedAt ? `${formatDate(r.finishedAt)} ${formatTime(r.finishedAt)}` : "—"}
                 </td>
-                <td className="px-4 py-2 text-zinc-600">{r.detail ?? "—"}</td>
+                <td className="px-5 py-3 text-muted-foreground">{r.detail ?? "—"}</td>
               </tr>
             ))}
             {runs.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-zinc-400">
+                <td colSpan={6} className="px-5 py-12 text-center text-muted-foreground">
                   No jobs have run yet. They will appear here after the cron fires.
                 </td>
               </tr>
@@ -170,6 +176,6 @@ export default async function JobsPage() {
           </tbody>
         </table>
       </section>
-    </div>
+    </>
   );
 }

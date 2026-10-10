@@ -31,46 +31,46 @@ export default function EmailList({ emails }: { emails: Email[] }) {
 
   return (
     <>
-      <section className="rounded-xl border border-zinc-200 bg-white">
+      <section className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-200 text-left text-zinc-500">
-              <th className="px-4 py-2">Type</th>
-              <th className="px-4 py-2">To</th>
-              <th className="px-4 py-2">Family</th>
-              <th className="px-4 py-2">Subject</th>
-              <th className="px-4 py-2">Sent</th>
-              <th className="px-4 py-2">Date</th>
+            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <th className="px-5 py-3">Type</th>
+              <th className="px-5 py-3">To</th>
+              <th className="px-5 py-3">Family</th>
+              <th className="px-5 py-3">Subject</th>
+              <th className="px-5 py-3">Sent</th>
+              <th className="px-5 py-3">Date</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
+          <tbody className="divide-y divide-border">
             {emails.map((m) => (
               <tr
                 key={m.id}
                 onClick={() => setSelected(m)}
-                className="cursor-pointer hover:bg-zinc-50"
+                className="cursor-pointer transition-colors hover:bg-muted"
               >
-                <td className="px-4 py-2">
-                  <span className={`inline-block rounded px-2 py-0.5 text-xs ${badge(m.type)}`}>
+                <td className="px-5 py-3">
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${badge(m.type)}`}>
                     {EMAIL_TYPES[m.type] ?? m.type}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-zinc-600">{m.to}</td>
-                <td className="px-4 py-2 text-zinc-600">{m.family?.name ?? "\u2014"}</td>
-                <td className="px-4 py-2 text-zinc-600">{m.subject}</td>
-                <td className="px-4 py-2">
-                  <span className={`inline-block rounded px-2 py-0.5 text-xs ${badge(m.sent ? "SUCCESS" : "FAILED")}`}>
+                <td className="px-5 py-3 text-muted-foreground">{m.to}</td>
+                <td className="px-5 py-3 text-muted-foreground">{m.family?.name ?? "\u2014"}</td>
+                <td className="px-5 py-3 text-muted-foreground">{m.subject}</td>
+                <td className="px-5 py-3">
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${badge(m.sent ? "SUCCESS" : "FAILED")}`}>
                     {m.sent ? "yes" : "no"}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-zinc-600">
+                <td className="px-5 py-3 whitespace-nowrap text-muted-foreground">
                   {formatDate(m.createdAt)} {formatTime(m.createdAt)}
                 </td>
               </tr>
             ))}
             {emails.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-zinc-400">
+                <td colSpan={6} className="px-5 py-12 text-center text-muted-foreground">
                   No emails sent yet.
                 </td>
               </tr>

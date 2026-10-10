@@ -32,7 +32,7 @@ export function EditLessonButton({
           setError(null);
           setOpen((v) => !v);
         }}
-        className="text-xs font-medium text-zinc-600 underline underline-offset-2 hover:text-zinc-900"
+        className="text-xs font-medium text-primary underline-offset-2 hover:underline"
       >
         Edit
       </button>
@@ -53,22 +53,22 @@ export function EditLessonButton({
               setPending(false);
             }
           }}
-          className="absolute right-0 z-10 mt-2 w-56 rounded-xl border border-zinc-200 bg-white p-4 text-left shadow-lg"
+          className="card absolute right-0 z-10 mt-2 w-56 space-y-1 p-4 text-left shadow-pop"
         >
           <input type="hidden" name="id" value={lessonId} />
-          <label className="mb-1 block text-xs font-medium text-zinc-500">Date</label>
+          <label className="label">Date</label>
           <input
             type="date"
             name="date"
             required
             defaultValue={dateStr}
-            className="mb-3 w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+            className="input py-1 text-sm"
           />
-          <label className="mb-1 block text-xs font-medium text-zinc-500">Start time</label>
+          <label className="label">Start time</label>
           <select
             name="startTime"
             defaultValue={startStr}
-            className="mb-3 w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+            className="input py-1 text-sm"
           >
             {QUARTER_HOUR_TIMES.map((t) => (
               <option key={t} value={t}>
@@ -76,23 +76,23 @@ export function EditLessonButton({
               </option>
             ))}
           </select>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 pt-2">
             <button
               type="submit"
               disabled={pending}
-              className="rounded-lg bg-zinc-900 px-3 py-1 text-xs text-white disabled:opacity-50"
+              className="btn btn-primary px-3 py-1 text-xs"
             >
               {pending ? "Saving…" : "Save"}
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-xs text-zinc-500 hover:text-zinc-800"
+              className="btn btn-ghost px-2 py-1 text-xs"
             >
               Cancel
             </button>
           </div>
-          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-600">{error}</p>}
         </form>
       )}
     </div>

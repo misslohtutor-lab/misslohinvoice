@@ -20,7 +20,7 @@ export function ConfirmButton({
     <button
       type="submit"
       onClick={onClick}
-      className={className ?? "text-xs font-medium text-red-600 underline underline-offset-2 hover:text-red-800"}
+      className={className ?? "text-xs font-medium text-red-600 underline-offset-2 hover:underline"}
     >
       {label}
     </button>

@@ -1,30 +1,31 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
-
-const nav = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/families", label: "Families" },
-  { href: "/admin/schedule", label: "Schedule" },
-  { href: "/admin/billing", label: "Billing" },
-  { href: "/admin/emails", label: "Emails" },
-  { href: "/admin/jobs", label: "Jobs" },
-];
+import { AdminMobileNav, AdminSidebar } from "@/components/admin-nav";
+import { GraduateIcon } from "@/components/icons";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   await requireAdmin();
   return (
-    <div className="min-h-full bg-zinc-50">
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3">
-        <Link href="/admin" className="font-semibold">Miss Loh Admin</Link>
-        <nav className="flex gap-4 text-sm">
-          {nav.map((n) => (
-            <Link key={n.href} href={n.href} className="text-zinc-600 hover:text-zinc-900">
-              {n.label}
-            </Link>
-          ))}
-        </nav>
-      </header>
-      <main className="mx-auto max-w-6xl p-6">{children}</main>
+    <div className="min-h-full bg-background">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-border bg-surface p-4 md:flex">
+        <AdminSidebar />
+      </aside>
+
+      <div className="flex min-h-screen flex-col md:pl-64">
+        <header className="sticky top-0 z-30 border-b border-border bg-surface/80 px-4 py-3 backdrop-blur md:hidden">
+          <Link href="/admin" className="mb-3 flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <GraduateIcon width={18} height={18} />
+            </span>
+            <span className="text-sm font-semibold">Miss Loh Tutoring Admin</span>
+          </Link>
+          <AdminMobileNav />
+        </header>
+
+        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div className="mx-auto max-w-6xl space-y-8">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }

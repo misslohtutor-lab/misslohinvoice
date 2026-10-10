@@ -24,8 +24,8 @@ export function GenerateLessonsButton({
   const text = label ?? "Generate upcoming lessons";
   const cls =
     variant === "button"
-      ? "rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
-      : "text-xs font-medium text-zinc-600 underline underline-offset-2 hover:text-zinc-900 disabled:opacity-50";
+      ? "btn btn-primary"
+      : "text-xs font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50";
 
   return (
     <form action={action}>

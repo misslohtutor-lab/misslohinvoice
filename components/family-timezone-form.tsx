@@ -26,13 +26,13 @@ export function FamilyTimezoneForm({ familyId, initialTimeZone }: { familyId: st
       className="mt-1 inline-flex items-center gap-2"
     >
       <input type="hidden" name="familyId" value={familyId} />
-      <label htmlFor="timeZone" className="text-zinc-400">TZ</label>
+      <label htmlFor="timeZone" className="text-muted-foreground">TZ</label>
       <select
         name="timeZone"
         id="timeZone"
         value={timeZone}
         onChange={(e) => setTimeZone(e.target.value)}
-        className="rounded border border-zinc-300 px-2 py-1 text-sm"
+        className="input w-auto py-1 text-sm"
       >
         {TIMEZONES.map((z) => (
           <option key={z} value={z}>{z}</option>
@@ -41,7 +41,7 @@ export function FamilyTimezoneForm({ familyId, initialTimeZone }: { familyId: st
       <button
         type="submit"
         disabled={pending}
-        className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+        className="btn btn-secondary px-2.5 py-1 text-xs"
       >
         {pending ? "Saving…" : "Update timezone"}
       </button>

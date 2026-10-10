@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { formatDate, formatTime } from "@/lib/ui";
+import { formatDate, formatTime, badge } from "@/lib/ui";
+import { PageHeader } from "@/components/ui";
 import { GenerateLessonsButton } from "@/components/generate-lessons-button";
 
 export default async function SchedulePage() {
@@ -11,44 +12,54 @@ export default async function SchedulePage() {
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Schedule</h1>
-        <div className="flex items-center gap-3">
-          <GenerateLessonsButton weeksAhead={10} variant="button" label="Generate lessons for all students" />
-        </div>
-      </div>
+    <>
+      <PageHeader
+        title="Schedule"
+        description="All upcoming scheduled lessons across every student."
+        action={<GenerateLessonsButton weeksAhead={10} variant="button" label="Generate lessons" />}
+      />
 
-      <div className="rounded-xl border border-zinc-200 bg-white text-sm">
-        <table className="w-full">
+      <div className="card overflow-hidden">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-200 text-left text-zinc-500">
-              <th className="px-4 py-2">Date</th>
-              <th className="px-4 py-2">Student</th>
-              <th className="px-4 py-2">Family</th>
-              <th className="px-4 py-2">Duration</th>
-              <th className="px-4 py-2">Status</th>
+            <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <th className="px-5 py-3">Date</th>
+              <th className="px-5 py-3">Student</th>
+              <th className="px-5 py-3">Family</th>
+              <th className="px-5 py-3">Duration</th>
+              <th className="px-5 py-3">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
+          <tbody className="divide-y divide-border">
             {lessons.map((l) => (
-              <tr key={l.id} className="hover:bg-zinc-50">
-                <td className="px-4 py-2 text-zinc-700">
-                  {formatDate(l.date, { weekday: "short", month: "short", day: "numeric" })} {formatTime(l.date)}
+              <tr key={l.id} className="transition-colors hover:bg-muted">
+                <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {formatDate(l.date, { weekday: "short", month: "short", day: "numeric" })}
+                  </span>{" "}
+                  {formatTime(l.date)}
                 </td>
-                <td className="px-4 py-2 font-medium">{l.student.name}</td>
-                <td className="px-4 py-2 text-zinc-600">{l.student.family.name}</td>
-                <td className="px-4 py-2 text-zinc-600">{l.durationHours}h</td>
-                <td className="px-4 py-2"><span className="rounded bg-zinc-100 px-2 py-0.5 text-xs">{l.status}</span></td>
+                <td className="px-5 py-3 font-medium">{l.student.name}</td>
+                <td className="px-5 py-3 text-muted-foreground">{l.student.family.name}</td>
+                <td className="px-5 py-3 text-muted-foreground">{l.durationHours}h</td>
+                <td className="px-5 py-3">
+                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${badge(l.status)}`}>
+                    {l.status.toLowerCase()}
+                  </span>
+                </td>
               </tr>
             ))}
             {lessons.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-zinc-400">No scheduled lessons. Generate them above.</td></tr>
+              <tr>
+                <td colSpan={5} className="px-5 py-12 text-center text-muted-foreground">
+                  No scheduled lessons. Generate them above.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
       </div>
-    </div>
+    </>
   );
 }
 

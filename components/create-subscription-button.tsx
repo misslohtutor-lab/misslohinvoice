@@ -15,7 +15,7 @@ export function CreateSubscriptionButton({ familyId }: { familyId: string }) {
       <button
         disabled={pending}
         title="Create the monthly Stripe subscription now that the family has a schedule."
-        className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+        className="btn btn-success"
       >
         {pending ? "Creating subscription…" : "Create subscription"}
       </button>

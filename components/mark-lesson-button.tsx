@@ -41,7 +41,7 @@ export function MarkLessonButton({
         type="submit"
         disabled={pending}
         onClick={onClick}
-        className="text-xs font-medium text-red-600 underline underline-offset-2 hover:text-red-800 disabled:opacity-50"
+        className="text-xs font-medium text-red-600 underline-offset-2 hover:underline disabled:opacity-50"
       >
         {pending ? "Working…" : label}
       </button>

@@ -16,7 +16,7 @@ export function BillingEmailButton({ familyId }: { familyId: string }) {
       <button
         disabled={pending}
         title="Send this month's billing email now; the card is charged 24 hours later."
-        className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50"
+        className="btn btn-secondary"
       >
         {pending ? "Sending…" : "Send this month's billing email"}
       </button>
