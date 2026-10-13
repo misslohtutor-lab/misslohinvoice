@@ -169,3 +169,30 @@
   they already sum any negative `Adjustment` by amount.
 - Reversing a half credit (Restore) deletes any unapplied credit matching the
   lesson's reason prefix, so full → half → restore round-trips cleanly.
+
+# Flexible student rates (simple edit)
+
+## Goal
+
+Edit a student's name/subject/rate in place without deleting/recreating. The new
+rate applies to future billing; already-invoiced months keep the rate stored on
+their ledger lines.
+
+## Plan
+
+- [x] **Action** — `updateStudent` validates name + rate (positive, divisible by
+      $0.04); on a rate change it clears the cached Stripe price ids so prices
+      are regenerated at the new rate.
+- [x] **UI** — inline "Edit" form per student (name, hourly rate, subject).
+- [x] **Verify** — `prisma validate`, `lint`, `build`.
+
+## Review
+
+- `lib/admin-actions.ts`: added `updateStudent` (returns inline errors) and a
+  shared `validateHourlyRate` helper reused by `addStudent`.
+- Clearing `stripePriceId` / `stripeOneTimePriceId` on a rate change is the key
+  correctness step: Stripe prices are immutable and bake in the rate, so the
+  next billing pass (`syncNextMonthQuantities` / immediate invoice) regenerates
+  them at the new rate and zeroes the old line item.
+- `components/edit-student-button.tsx`: inline edit form matching the existing
+  `EditLessonButton` pattern, wired into `app/admin/families/[id]/page.tsx`.

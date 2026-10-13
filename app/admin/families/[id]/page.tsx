@@ -12,6 +12,7 @@ import { FamilyTimezoneForm } from "@/components/family-timezone-form";
 import { ConfirmButton } from "@/components/confirm-button";
 import { MarkLessonButton } from "@/components/mark-lesson-button";
 import { EditLessonButton } from "@/components/edit-lesson-button";
+import { EditStudentButton } from "@/components/edit-student-button";
 import { DayOfWeek } from "@/generated/prisma/enums";
 
 const DAYS = Object.values(DayOfWeek);
@@ -252,10 +253,18 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
                     {money(s.hourlyRate)}/hr{s.subject ? ` · ${s.subject}` : ""}
                   </div>
                 </div>
-                <form action={deleteStudent}>
-                  <input type="hidden" name="id" value={s.id} />
-                  <ConfirmButton label="Delete" confirmText={`Delete ${s.name} and all of their lessons? This cannot be undone.`} />
-                </form>
+                <div className="flex items-center gap-3">
+                  <EditStudentButton
+                    studentId={s.id}
+                    name={s.name}
+                    hourlyRate={s.hourlyRate}
+                    subject={s.subject}
+                  />
+                  <form action={deleteStudent}>
+                    <input type="hidden" name="id" value={s.id} />
+                    <ConfirmButton label="Delete" confirmText={`Delete ${s.name} and all of their lessons? This cannot be undone.`} />
+                  </form>
+                </div>
               </div>
 
               <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Weekly schedule</h3>

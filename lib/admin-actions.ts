@@ -38,20 +38,66 @@ export async function createFamily(formData: FormData) {
   redirect(`/admin/families/${family.id}`);
 }
 
+/** Rates must be positive and representable by Stripe's 15-minute billing unit. */
+function validateHourlyRate(rate: number): string | null {
+  if (!Number.isFinite(rate) || rate <= 0 || Math.round(rate * 100) % 4 !== 0) {
+    return "Hourly rates must be positive and divisible by $0.04";
+  }
+  return null;
+}
+
 export async function addStudent(formData: FormData) {
   await requireAdmin();
   const familyId = String(formData.get("familyId") ?? "");
   const name = String(formData.get("name") ?? "");
   const hourlyRate = Number(formData.get("hourlyRate") ?? 0);
   const subject = String(formData.get("subject") ?? "") || null;
-  if (!Number.isFinite(hourlyRate) || hourlyRate <= 0 || Math.round(hourlyRate * 100) % 4 !== 0) {
-    throw new Error("Hourly rates must be positive and divisible by $0.04");
-  }
+  const rateError = validateHourlyRate(hourlyRate);
+  if (rateError) throw new Error(rateError);
 
   await prisma.student.create({
     data: { familyId, name, hourlyRate, subject },
   });
   revalidatePath("/admin/families/" + familyId);
+}
+
+export type StudentResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Edit a student's name, subject, and hourly rate in place. A rate change drops
+ * the cached Stripe price ids because prices are immutable and bake in the rate;
+ * the next billing pass regenerates them at the new rate. Months already
+ * invoiced keep the rate snapshotted on their ledger lines.
+ */
+export async function updateStudent(formData: FormData): Promise<StudentResult> {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const subject = String(formData.get("subject") ?? "").trim() || null;
+  const hourlyRate = Number(formData.get("hourlyRate") ?? 0);
+  try {
+    if (!name) return { ok: false, error: "Name is required." };
+    const rateError = validateHourlyRate(hourlyRate);
+    if (rateError) return { ok: false, error: rateError + "." };
+
+    const student = await prisma.student.findUnique({ where: { id } });
+    if (!student) return { ok: false, error: "Student not found." };
+
+    const rateChanged = hourlyRate !== student.hourlyRate;
+    await prisma.student.update({
+      where: { id },
+      data: {
+        name,
+        subject,
+        hourlyRate,
+        ...(rateChanged ? { stripePriceId: null, stripeOneTimePriceId: null } : {}),
+      },
+    });
+    revalidatePath(`/admin/families/${student.familyId}`);
+    return { ok: true };
+  } catch (err) {
+    return logActionError("updateStudent", err);
+  }
 }
 
 export async function addWeeklySlot(formData: FormData) {
