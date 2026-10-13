@@ -237,6 +237,26 @@ export async function sendOnboarding(family: Family, checkoutUrl: string, guideU
   });
 }
 
+/**
+ * Free-form announcement composed by an admin and sent to one family. The body
+ * is plain text (HTML-escaped) so admins can't accidentally inject markup;
+ * blank-line-separated blocks become paragraphs, single newlines become breaks.
+ */
+export async function sendMassEmailToFamily(family: Family, subject: string, body: string) {
+  const paragraphs = esc(body.trim())
+    .split(/\n{2,}/)
+    .map((p) => `<p style="line-height:1.6">${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  const html = layout(esc(subject), paragraphs);
+  return sendEmailAndRecord({
+    to: family.email,
+    subject,
+    html,
+    type: "MASS_EMAIL",
+    familyId: family.id,
+  });
+}
+
 /** Confirm that Stripe saved the family's payment method after onboarding. */
 export async function sendOnboardingConfirmation(family: Family) {
   const message = await reserve(family, "ONBOARDING_COMPLETE", "Payment setup complete", `onboarding-complete:${family.id}`);

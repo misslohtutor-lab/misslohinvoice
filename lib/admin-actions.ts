@@ -12,8 +12,7 @@ import { timeToMinutes } from "@/lib/ui";
 import { createOnboardingCheckout, createSubscriptionAfterSetup, computeImmediateInvoicePreview, syncNextMonthQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
-import { sendOnboarding } from "@/lib/email-templates";
-import { formatBusinessDate, formatBusinessTime, nextBusinessMonth, BUSINESS_TIME_ZONE, businessDateTime } from "@/lib/time";
+import { sendOnboarding, sendMassEmailToFamily } from "@/lib/email-templates";import { formatBusinessDate, formatBusinessTime, nextBusinessMonth, BUSINESS_TIME_ZONE, businessDateTime } from "@/lib/time";
 import { getStripe } from "@/lib/stripe";
 
 function logActionError(action: string, err: unknown) {
@@ -496,3 +495,53 @@ export async function sendInvoiceNow(formData: FormData): Promise<InvoiceResult>
     return logActionError("sendInvoiceNow", err);
   }
 }
+
+export type MassEmailResult =
+  | { ok: true; sent: number; failed: number; total: number; errors: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Manually send a composed email to every family or a hand-picked subset. Each
+ * recipient gets its own Message row (type MASS_EMAIL) so the send is visible in
+ * the email log; one family failing doesn't stop the rest.
+ */
+export async function sendMassEmailAction(
+  _prev: MassEmailResult | null,
+  formData: FormData
+): Promise<MassEmailResult> {
+  await requireAdmin();
+  const subject = String(formData.get("subject") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  const mode = String(formData.get("mode") ?? "all");
+
+  if (!subject) return { ok: false, error: "Subject is required." };
+  if (!body) return { ok: false, error: "Message body is required." };
+
+  try {
+    let familyIds: string[] | null = null;
+    if (mode === "selected") {
+      familyIds = formData.getAll("familyIds").map(String).filter(Boolean);
+      if (familyIds.length === 0) return { ok: false, error: "Select at least one family." };
+    }
+
+    const families = await prisma.family.findMany({
+      where: familyIds ? { id: { in: familyIds } } : undefined,
+      orderBy: { name: "asc" },
+    });
+    if (families.length === 0) return { ok: false, error: "No families to email." };
+
+    let sent = 0;
+    const errors: string[] = [];
+    for (const family of families) {
+      const res = await sendMassEmailToFamily(family, subject, body);
+      if (res.sent) sent++;
+      else errors.push(`${family.name} <${family.email}>: ${res.error ?? "send failed"}`);
+    }
+
+    revalidatePath("/admin/emails");
+    return { ok: true, sent, failed: families.length - sent, total: families.length, errors };
+  } catch (err) {
+    return logActionError("sendMassEmail", err);
+  }
+}
+

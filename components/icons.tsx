@@ -119,12 +119,20 @@ export function XIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
-
 export function GraduateIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>
       <path d="M22 10 12 5 2 10l10 5 10-5Z" />
       <path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5" />
+    </Icon>
+  );
+}
+
+export function SendIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M22 2 11 13" />
+      <path d="M22 2 15 22l-4-9-9-4Z" />
     </Icon>
   );
 }

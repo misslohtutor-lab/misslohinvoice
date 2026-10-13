@@ -9,7 +9,8 @@ type EmailType =
   | "ONBOARDING_COMPLETE"
   | "ONBOARDING_INVITE"
   | "MAGIC_LINK"
-  | "IMMEDIATE_INVOICE";
+  | "IMMEDIATE_INVOICE"
+  | "MASS_EMAIL";
 
 export interface EmailRecipient {
   to: string;

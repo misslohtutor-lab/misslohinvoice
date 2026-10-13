@@ -9,6 +9,7 @@ import {
   DashboardIcon,
   GraduateIcon,
   MailIcon,
+  SendIcon,
   UsersIcon,
 } from "./icons";
 
@@ -18,6 +19,7 @@ const NAV = [
   { href: "/admin/schedule", label: "Schedule", Icon: CalendarIcon },
   { href: "/admin/billing", label: "Billing", Icon: CardIcon },
   { href: "/admin/emails", label: "Emails", Icon: MailIcon },
+  { href: "/admin/mass-email", label: "Mass email", Icon: SendIcon },
   { href: "/admin/jobs", label: "Jobs", Icon: ActivityIcon },
 ];
 
