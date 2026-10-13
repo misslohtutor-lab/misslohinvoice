@@ -238,16 +238,12 @@ export async function sendOnboarding(family: Family, checkoutUrl: string, guideU
 }
 
 /**
- * Free-form announcement composed by an admin and sent to one family. The body
- * is plain text (HTML-escaped) so admins can't accidentally inject markup;
- * blank-line-separated blocks become paragraphs, single newlines become breaks.
+ * Free-form announcement composed by an admin and sent to one family. `bodyHtml`
+ * must already be sanitized (see `sanitizeEmailHtml`) — it is injected into the
+ * branded layout as-is so the admin's formatting is preserved.
  */
-export async function sendMassEmailToFamily(family: Family, subject: string, body: string) {
-  const paragraphs = esc(body.trim())
-    .split(/\n{2,}/)
-    .map((p) => `<p style="line-height:1.6">${p.replace(/\n/g, "<br>")}</p>`)
-    .join("");
-  const html = layout(esc(subject), paragraphs);
+export async function sendMassEmailToFamily(family: Family, subject: string, bodyHtml: string) {
+  const html = layout(esc(subject), `<div style="line-height:1.6">${bodyHtml}</div>`);
   return sendEmailAndRecord({
     to: family.email,
     subject,

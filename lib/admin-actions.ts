@@ -12,7 +12,8 @@ import { timeToMinutes } from "@/lib/ui";
 import { createOnboardingCheckout, createSubscriptionAfterSetup, computeImmediateInvoicePreview, syncNextMonthQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
-import { sendOnboarding, sendMassEmailToFamily } from "@/lib/email-templates";import { formatBusinessDate, formatBusinessTime, nextBusinessMonth, BUSINESS_TIME_ZONE, businessDateTime } from "@/lib/time";
+import { sendOnboarding, sendMassEmailToFamily } from "@/lib/email-templates";
+import { sanitizeEmailHtml, htmlToText } from "@/lib/sanitize";import { formatBusinessDate, formatBusinessTime, nextBusinessMonth, BUSINESS_TIME_ZONE, businessDateTime } from "@/lib/time";
 import { getStripe } from "@/lib/stripe";
 
 function logActionError(action: string, err: unknown) {
@@ -511,11 +512,11 @@ export async function sendMassEmailAction(
 ): Promise<MassEmailResult> {
   await requireAdmin();
   const subject = String(formData.get("subject") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
+  const bodyHtml = sanitizeEmailHtml(String(formData.get("bodyHtml") ?? ""));
   const mode = String(formData.get("mode") ?? "all");
 
   if (!subject) return { ok: false, error: "Subject is required." };
-  if (!body) return { ok: false, error: "Message body is required." };
+  if (!htmlToText(bodyHtml)) return { ok: false, error: "Message body is required." };
 
   try {
     let familyIds: string[] | null = null;
@@ -533,7 +534,7 @@ export async function sendMassEmailAction(
     let sent = 0;
     const errors: string[] = [];
     for (const family of families) {
-      const res = await sendMassEmailToFamily(family, subject, body);
+      const res = await sendMassEmailToFamily(family, subject, bodyHtml);
       if (res.sent) sent++;
       else errors.push(`${family.name} <${family.email}>: ${res.error ?? "send failed"}`);
     }

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useActionState } from "react";
 import { sendMassEmailAction, type MassEmailResult } from "@/lib/admin-actions";
+import { sanitizeEmailHtml, htmlToText } from "@/lib/sanitize";
+import RichTextEditor from "@/components/rich-text-editor";
 
 interface FamilyOption {
   id: string;
@@ -14,7 +16,7 @@ export default function MassEmailForm({ families }: { families: FamilyOption[] }
   const [mode, setMode] = useState<"all" | "selected">("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [bodyHtml, setBodyHtml] = useState("");
   const [state, action, pending] = useActionState<MassEmailResult | null, FormData>(
     sendMassEmailAction,
     null
@@ -122,21 +124,11 @@ export default function MassEmailForm({ families }: { families: FamilyOption[] }
         </div>
 
         <div>
-          <label className="label" htmlFor="body">
-            Message
-          </label>
-          <textarea
-            id="body"
-            name="body"
-            required
-            rows={12}
-            className="input"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder={"Hi everyone,\n\nA quick update about the upcoming schedule..."}
-          />
+          <span className="label">Message</span>
+          <input type="hidden" name="bodyHtml" value={bodyHtml} />
+          <RichTextEditor onChange={setBodyHtml} />
           <p className="mt-1 text-xs text-muted-foreground">
-            Plain text. Leave a blank line to start a new paragraph.
+            Formatting is preserved in the email. Links open in a new tab.
           </p>
         </div>
 
@@ -145,7 +137,7 @@ export default function MassEmailForm({ families }: { families: FamilyOption[] }
             Will send to <strong>{recipients}</strong> {recipients === 1 ? "family" : "families"}.
           </p>
           <button
-            disabled={pending || recipients === 0 || !subject.trim() || !body.trim()}
+            disabled={pending || recipients === 0 || !subject.trim() || !htmlToText(bodyHtml)}
             className="btn btn-primary"
           >
             {pending ? "Sending…" : "Send email"}
@@ -179,15 +171,9 @@ export default function MassEmailForm({ families }: { families: FamilyOption[] }
             <p className="text-xs text-muted-foreground">Subject</p>
             <p className="font-medium">{subject || "—"}</p>
           </div>
-          <div className="px-4 py-3 text-sm">
-            {body ? (
-              body
-                .split(/\n{2,}/)
-                .map((p, i) => (
-                  <p key={i} className="mb-3 whitespace-pre-line last:mb-0">
-                    {p}
-                  </p>
-                ))
+          <div className="px-4 py-3 text-sm leading-relaxed text-foreground [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_ol_li]:list-decimal [&_ol]:mb-3 [&_p]:mb-3 [&_ul]:mb-3">
+            {htmlToText(bodyHtml) ? (
+              <div dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(bodyHtml) }} />
             ) : (
               <p className="text-muted-foreground">Your message will appear here.</p>
             )}
