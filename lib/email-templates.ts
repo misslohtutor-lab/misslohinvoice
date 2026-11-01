@@ -41,6 +41,10 @@ export async function sendReceipt(
   if (!message) return { sent: false, error: "Receipt already sent" };
 
   const lines = (invoice.lines.data ?? [])
+    // Subscription lines for a student with no lessons that month are kept at
+    // quantity 0 instead of being removed, so Stripe still invoices them as
+    // 0-hour / $0 rows. A receipt should only itemize what was actually billed.
+    .filter((l) => (l.quantity ?? 0) > 0)
     .map((l) => {
       const price = l.price;
       const qty = l.quantity ?? 0;
