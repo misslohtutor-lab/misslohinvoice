@@ -44,7 +44,7 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
         },
       },
       adjustments: { orderBy: { createdAt: "desc" }, take: 25 },
-      ledgerLines: { orderBy: { createdAt: "desc" }, take: 25 },
+      ledgerLines: { orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }], take: 25 },
       pendingCharges: { orderBy: { createdAt: "desc" }, take: 10 },
     },
   });
@@ -330,7 +330,7 @@ export default async function FamilyDetail({ params }: { params: Promise<{ id: s
                                 lessonId={l.id}
                                 status="SKIPPED"
                                 label="Skip"
-                                confirmText={`Skip the ${formatDate(l.date)} lesson (remove from calendar)? No credit is given.`}
+                                confirmText={`Skip the ${formatDate(l.date)} lesson (remove from calendar)? It won't be billed; no credit is issued if the month is already paid.`}
                               />
                               <MarkLessonButton
                                 lessonId={l.id}

@@ -9,7 +9,7 @@ import { generateAllLessons, generateLessonsForStudent, computeFamilyMonth } fro
 import type { MonthSummary } from "@/lib/scheduling";
 import { round2 } from "@/lib/scheduling";
 import { timeToMinutes } from "@/lib/ui";
-import { createOnboardingCheckout, createSubscriptionAfterSetup, computeImmediateInvoicePreview, syncNextMonthQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
+import { createOnboardingCheckout, createSubscriptionAfterSetup, computeImmediateInvoicePreview, syncNextMonthQuantities, syncUpcomingQuantities, sendImmediateInvoice } from "@/lib/subscriptions";
 import { queueMidMonthCharge } from "@/lib/midmonth";
 import { guideUrl } from "@/lib/checkout";
 import { sendOnboarding, sendMassEmailToFamily } from "@/lib/email-templates";
@@ -154,6 +154,9 @@ export async function deleteWeeklySlot(formData: FormData) {
     prisma.weeklySlot.delete({ where: { id } }),
   ]);
 
+  // The deleted lessons must come off the upcoming invoice as well.
+  await syncUpcomingQuantities(slot.student.familyId);
+
   revalidatePath(`/admin/families/${slot.student.familyId}`);
 }
 
@@ -169,6 +172,8 @@ export async function generateLessonsAction(formData: FormData): Promise<Generat
     if (studentId) {
       const student = await prisma.student.findUnique({ where: { id: studentId } });
       const created = await generateLessonsForStudent(studentId, weeksAhead);
+      // New lessons for the upcoming month should be on the next invoice too.
+      if (student) await syncUpcomingQuantities(student.familyId);
       revalidatePath(`/admin/families/${student?.familyId}`);
       return { ok: true, created, total: await countLessons(studentId) };
     }
@@ -319,6 +324,8 @@ export async function deleteStudent(formData: FormData) {
   const student = await prisma.student.findUnique({ where: { id } });
   if (!student) throw new Error("Student not found");
   await prisma.student.delete({ where: { id } });
+  // Removing a student also removes their lessons from the upcoming bill.
+  await syncUpcomingQuantities(student.familyId);
   redirect(`/admin/families/${student.familyId}`);
 }
 
@@ -394,6 +401,13 @@ export async function updateLesson(formData: FormData): Promise<MarkLessonResult
 
     await prisma.lesson.update({ where: { id }, data: { date: start, endTime: end } });
 
+    // Moving a billable lesson across a month boundary changes what the
+    // upcoming invoice should contain. (Missed lessons are excluded: their
+    // credit already handles the bill.)
+    if (lesson.status === "SCHEDULED" || lesson.status === "COMPLETED") {
+      await syncUpcomingQuantities(lesson.student.familyId);
+    }
+
     revalidatePath(`/admin/families/${lesson.student.familyId}`);
     revalidatePath("/admin/schedule");
     return { ok: true };
@@ -437,7 +451,7 @@ export async function markLesson(formData: FormData): Promise<MarkLessonResult> 
       where: { id: { in: existingCredits.map((credit) => credit.id) } },
     });
 
-  // Only genuinely MISSED lessons (e.g. illness) grant a credit — MISSED_HALF
+    // Only genuinely MISSED lessons (e.g. illness) grant a credit — MISSED_HALF
     // grants a partial credit. SKIPPED (organizational) and other statuses do not.
     if (status === "MISSED" || status === "MISSED_HALF") {
       await prisma.adjustment.create({
@@ -451,6 +465,15 @@ export async function markLesson(formData: FormData): Promise<MarkLessonResult> 
     }
 
     await prisma.lesson.update({ where: { id }, data: { status } });
+
+    // Skips/restores change what the next invoice should contain. Push it now:
+    // the notice/billing crons may already have run (e.g. a skip made between
+    // the notice and the 1st would otherwise be charged in full). MISSED
+    // statuses are deliberately excluded — their credit already offsets the
+    // bill, so also dropping the hours would discount the family twice.
+    if (status === "SCHEDULED" || status === "SKIPPED") {
+      await syncUpcomingQuantities(lesson.student.familyId);
+    }
 
     revalidatePath(`/admin/families/${lesson.student.familyId}`);
     revalidatePath("/admin/schedule");

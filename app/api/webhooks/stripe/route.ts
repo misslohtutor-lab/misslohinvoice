@@ -4,10 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
 import { attachSubscriptionToFamily, createOnboardingCheckout, createSubscriptionAfterSetup } from "@/lib/subscriptions";
 import { receiptPeriod } from "@/lib/midmonth";
-import { BILLING_UNITS_PER_HOUR } from "@/lib/currency";
 import { sendReceipt, sendPaymentFailure, sendOnboarding, sendOnboardingConfirmation } from "@/lib/email-templates";
 import { guideUrl } from "@/lib/checkout";
 import { markSkippedCreditsApplied } from "@/lib/credits";
+import { recordInvoiceLines } from "@/lib/ledger";
 
 export const runtime = "nodejs";
 
@@ -309,36 +309,6 @@ async function syncStatus(familyId: string, subscriptionId: string) {
       periodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
     },
   });
-}
-
-async function recordInvoiceLines(familyId: string, invoice: Stripe.Invoice) {
-  const perLine = invoice.lines.data ?? [];
-  for (const line of perLine) {
-    const price = line.price;
-    const studentId = price?.metadata?.studentId;
-    if (!studentId) continue;
-    // Stripe prices are per 15-minute block; ledger rates are hourly.
-    const rate = price?.unit_amount != null ? (price.unit_amount * BILLING_UNITS_PER_HOUR) / 100 : 0;
-    const quantity = line.quantity ?? 0;
-    const hours = quantity / BILLING_UNITS_PER_HOUR; // billing unit = 15 min
-    const amount = (line.amount ?? 0) / 100;
-    await prisma.ledgerLine.upsert({
-      where: {
-        stripeInvoiceId_studentId: { stripeInvoiceId: invoice.id, studentId },
-      },
-      update: {},
-      create: {
-          familyId,
-          studentId,
-          periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : new Date(),
-          periodEnd: invoice.period_end ? new Date(invoice.period_end * 1000) : new Date(),
-          hours,
-          rate,
-          amount,
-          stripeInvoiceId: invoice.id,
-      },
-    });
-  }
 }
 
 /**

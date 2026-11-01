@@ -7,7 +7,7 @@ import { AlertIcon } from "@/components/icons";
 export default async function BillingPage() {
   const [families, lines] = await Promise.all([
     prisma.family.findMany({ include: { students: { select: { hourlyRate: true } } } }),
-    prisma.ledgerLine.findMany({ include: { family: true }, orderBy: { createdAt: "desc" }, take: 100 }),
+    prisma.ledgerLine.findMany({ include: { family: true }, orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }], take: 100 }),
   ]);
 
   const pastDue = families.filter((f) => f.subscriptionStatus === "past_due");

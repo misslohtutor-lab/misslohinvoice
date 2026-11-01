@@ -47,12 +47,14 @@ export async function noticeLessonsForPeriod(
  * Period to display on a receipt. One-off mid-month bills (no subscription)
  * have Stripe periods pinned to invoice creation, so they cover the span that
  * was actually billed: the first charged lesson → the last day of the month.
- * For subscription invoices, uses the invoice's own billing period, which
- * reflects exactly what the line items cover. The subscription's current
- * period is NOT reliable: Stripe advances it to the next cycle once an invoice
- * is paid, so reading it at webhook time would show a later period than the
- * one actually charged. Only for trial/initial invoices — where Stripe pins the
- * period to creation so start == end — fall back to the subscription's period
+ * For subscription invoices, uses the invoice *line* period: Stripe's
+ * invoice-level `period_start`/`period_end` describe the cycle that just ended
+ * (e.g. an invoice created Nov 1 has an Oct 1 → Nov 1 invoice period) while its
+ * lines cover the month being paid for (Nov 1 → Dec 1). The subscription's
+ * current period is NOT reliable either: Stripe advances it to the next cycle
+ * once an invoice is paid, so reading it at webhook time would show a later
+ * period than the one actually charged. Only for trial/initial invoices — where
+ * there are no useful line periods — fall back to the subscription's period
  * (those are $0 invoices, which sendReceipt skips anyway).
  */
 export async function receiptPeriod(
@@ -60,6 +62,14 @@ export async function receiptPeriod(
   invoice: Stripe.Invoice
 ): Promise<{ from: Date; to: Date } | null> {
   if (typeof invoice.subscription === "string") {
+    const linePeriods = (invoice.lines.data ?? [])
+      .filter((line) => !line.proration && line.period)
+      .map((line) => line.period);
+    if (linePeriods.length > 0) {
+      const start = Math.min(...linePeriods.map((p) => p.start));
+      const end = Math.max(...linePeriods.map((p) => p.end));
+      return { from: new Date(start * 1000), to: new Date(end * 1000 - 1) };
+    }
     if (invoice.period_start && invoice.period_end && invoice.period_end > invoice.period_start) {
       return {
         from: new Date(invoice.period_start * 1000),

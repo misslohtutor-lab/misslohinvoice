@@ -198,7 +198,10 @@ export async function attachSubscriptionToFamily(familyId: string, subscriptionI
  *
  * Returns the per-student itemized amounts that were set, for the notice email.
  */
-export async function syncNextMonthQuantities(familyId: string) {
+export async function syncNextMonthQuantities(
+  familyId: string,
+  opts: { applyCredits?: boolean } = {}
+) {
   const family = await prisma.family.findUnique({
     where: { id: familyId },
     include: { students: { where: { active: true } } },
@@ -235,9 +238,12 @@ export async function syncNextMonthQuantities(familyId: string) {
   }
 
   for (const [, priceId] of studentPriceIds) {
-    if (!existingPriceIds.has(priceId)) {
-      updates.push({ price: priceId, quantity: itemsToUpdate.get(priceId) ?? 0 });
-    }
+    if (existingPriceIds.has(priceId)) continue;
+    const qty = itemsToUpdate.get(priceId) ?? 0;
+    // A quantity-0 item can't be billed and only adds noise (0-hour rows) to
+    // invoices and receipts; wait until the student actually has hours.
+    if (qty <= 0) continue;
+    updates.push({ price: priceId, quantity: qty });
   }
 
   if (updates.length > 0) {
@@ -249,10 +255,37 @@ export async function syncNextMonthQuantities(familyId: string) {
   }
 
   // Apply skipped-lesson credits as the customer's Stripe balance so the next
-  // invoice is discounted by that amount.
-  await applySkippedCreditsToStripe(family.id, family.stripeCustomerId);
+  // invoice is discounted by that amount. Schedule-edit callers pass
+  // `applyCredits: false` — they only need the quantities refreshed, and a
+  // credit must stay reversible until the notice run actually bills it.
+  if (opts.applyCredits !== false) {
+    await applySkippedCreditsToStripe(family.id, family.stripeCustomerId);
+  }
 
   return { summary, year, month };
+}
+
+/**
+ * Push a schedule change to the subscription quantity Stripe will invoice next.
+ *
+ * Quantities are refreshed by the charge-notice and billing crons, but those
+ * run a few days before the 1st. A skip or edit made after the notice (while
+ * still before the invoice) would otherwise be charged at the old quantity.
+ * Safe to call for non-subscribers (no-op), and never throws: failing to sync
+ * must not block the schedule change — the crons retry and admins can re-sync.
+ */
+export async function syncUpcomingQuantities(familyId: string) {
+  const family = await prisma.family.findUnique({
+    where: { id: familyId },
+    select: { subscriptionId: true },
+  });
+  if (!family?.subscriptionId) return;
+
+  try {
+    await syncNextMonthQuantities(familyId, { applyCredits: false });
+  } catch (err) {
+    console.error(`[subscriptions] failed to sync upcoming quantities for ${familyId}:`, err);
+  }
 }
 
 /**
